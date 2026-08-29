@@ -1,0 +1,137 @@
+"""Shared helpers for calling the MYOB Business (AccountRight) API using
+tokens.json produced by oauth_callback.py.
+
+Handles loading/saving tokens.json and refreshing the access token when it
+expires. Access tokens last ~20 minutes and refresh tokens ~1 week, rotating
+on every use. A refreshed pair is re-saved to tokens.json immediately.
+
+Ref:
+https://developer.myob.com/api/myob-business-api/api-overview/authentication/
+https://apisupport.myob.com/hc/en-us/articles/360000513855-Building-an-AccountRight-API-request
+https://apisupport.myob.com/hc/en-us/articles/360000477416-Refreshing-access-tokens-using-the-refresh-tokens
+
+Some company files (typically ones migrated from desktop AccountRight) have
+their own sign-in credentials separate from your MYOB account, and require an
+x-myobapi-cftoken header alongside the OAuth token. If the client enables SSO
+this means they only need to log into the AccountRight file using their my.myob
+email and password and the username and password is now linked and NOT required.
+
+Set MYOB_CF_USERNAME / MYOB_CF_PASSWORD to send it; if a call fails with 401
+even right after a fresh token, that credentials-on-the-company-file case is
+the most likely reason.
+"""
+
+import base64
+import json
+import os
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TOKENS_FILE = os.path.join(ROOT_DIR, "tokens.json")
+
+TOKEN_ENDPOINT = "https://secure.myob.com/oauth2/v1/authorize"
+API_BASE = "https://api.myob.com/accountright"
+API_VERSION = "v2"
+TIMEOUT = 6
+
+
+def load_tokens() -> dict:
+    if not os.path.exists(TOKENS_FILE):
+        raise SystemExit(f"{TOKENS_FILE} not found — run scripts/oauth_callback.py first.")
+    with open(TOKENS_FILE) as f:
+        return json.load(f)
+
+
+def save_tokens(tokens: dict) -> None:
+    with open(TOKENS_FILE, "w") as f:
+        json.dump(tokens, f, indent=2)
+    os.chmod(TOKENS_FILE, 0o600)
+
+
+def refresh_tokens(tokens: dict, client_id: str, client_secret: str) -> dict:
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json"
+    }
+    data = urlencode(
+        {
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": tokens["refresh_token"],
+            "grant_type": "refresh_token",
+        }
+    ).encode()
+    request = Request(TOKEN_ENDPOINT, method="POST", headers=headers, data=data)
+    try:
+        with urlopen(request, timeout=TIMEOUT) as response:
+            new_tokens = json.loads(response.read().decode())
+    except HTTPError as e:
+        raise SystemExit(f"Token refresh failed ({e.code}): {e.read().decode(errors='replace')}")
+    except URLError as e:
+        raise SystemExit(f"Token refresh failed: could not reach {TOKEN_ENDPOINT} ({e.reason})")
+
+    # The refresh response doesn't repeat businessId/businessName - carry them over.
+    new_tokens["businessId"] = tokens.get("businessId")
+    new_tokens["businessName"] = tokens.get("businessName")
+    save_tokens(new_tokens)
+    return new_tokens
+
+
+def _request_headers(access_token: str, client_id: str) -> dict:
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "x-myobapi-key": client_id,
+        "x-myobapi-version": API_VERSION,
+        "Accept": "application/json",
+    }
+
+    cf_username = os.environ.get("MYOB_CF_USERNAME")
+    cf_password = os.environ.get("MYOB_CF_PASSWORD")
+    if cf_username and cf_password:
+        creds = f"{cf_username}:{cf_password}".encode()
+        headers["x-myobapi-cftoken"] = base64.b64encode(creds).decode()
+
+    return headers
+
+
+def api_get(path: str, params: dict | None = None) -> dict:
+    """GET an AccountRight API path (e.g. "/Sale/Invoice") for the business
+    file recorded in tokens.json, refreshing the access token on a 401."""
+    client_id = os.environ.get("MYOB_CLIENT_ID")
+    client_secret = os.environ.get("MYOB_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        raise SystemExit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
+    
+    tokens = load_tokens()
+    business_id = tokens.get("businessId")
+    if not business_id:
+        raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run scripts/oauth_callback.py.")
+    
+    url = f"{API_BASE}/{business_id}{path}"
+    if params:
+        url += "?" + urlencode(params)
+    
+    def do_request(access_token: str):
+        request = Request(url, headers=_request_headers(access_token, client_id))
+        return urlopen(request, timeout=TIMEOUT)
+
+    try:
+        with do_request(tokens["access_token"]) as response:
+            return json.loads(response.read().decode())
+    except HTTPError as e:
+        if e.code != 401:
+            raise SystemExit(f"API request to {path} failed ({e.code}): {e.read().decode(errors='replace')}")
+    except URLError as e:
+        raise SystemExit(f"API request to {path} failed: could not reach {url} ({e.reason})")
+    
+    # Access token expired (401) — refresh once and retry.
+    tokens = refresh_tokens(tokens, client_id, client_secret)
+    try:
+        with do_request(tokens["access_token"]) as response:
+            return json.loads(response.read().decode())
+    except HTTPError as e:
+        raise SystemExit(f"API request to {path} failed after refresh ({e.code}): {e.read().decode(errors='replace')}")
+    except URLError as e:
+        raise SystemExit(f"API request to {path} failed: could not reach {url} ({e.reason})")
