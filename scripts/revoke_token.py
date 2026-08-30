@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Revoke a myobot API token by id (see scripts/list_tokens.py for ids).
+"""Revoke a mag API token by id (see scripts/list_tokens.py for ids).
 
 Takes effect immediately on the next request through the proxy. Has no
 effect on MYOB's own OAuth grant - only on what this one token can reach.

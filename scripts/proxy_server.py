@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Persistent thin proxy: validates a myobot bearer token's scope
+"""Persistent thin proxy: validates a mag bearer token's scope
 (token_store.authorize), then forwards the request to the real MYOB API
 using the single MYOB OAuth grant in tokens.json (myob_client.raw_request),
 and relays MYOB's response back to the caller unmodified - no reshaping, so
@@ -30,7 +30,7 @@ import myob_client
 import token_store
 
 LISTEN_HOST = "127.0.0.1"
-LISTEN_PORT = int(os.environ.get("MYOBOT_PROXY_PORT", "8788"))
+LISTEN_PORT = int(os.environ.get("MAG_PROXY_PORT", "8788"))
 PATH_PREFIX = "/proxy/"
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -115,7 +115,7 @@ def main():
         sys.exit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
 
     server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), ProxyHandler)
-    print(f"myobot proxy listening on {LISTEN_HOST}:{LISTEN_PORT}{PATH_PREFIX}")
+    print(f"mag proxy listening on {LISTEN_HOST}:{LISTEN_PORT}{PATH_PREFIX}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

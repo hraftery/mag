@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Issue a new myobot API token.
+"""Issue a new mag API token.
 
 Prints the raw token once - only its hash is stored (api_tokens.json), so if
 it's lost the only option is to revoke it (scripts/revoke_token.py) and

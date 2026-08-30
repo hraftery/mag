@@ -1,4 +1,4 @@
-"""Issuance and validation of myobot's own bearer tokens - the credentials
+"""Issuance and validation of mag's own bearer tokens - the credentials
 handed to clients (GAS, local scripts, Postman) so they never need to hold
 or negotiate a real MYOB credential. Entirely separate from tokens.json
 (MYOB's own OAuth tokens), which only proxy_server.py / myob_client.py ever

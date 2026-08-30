@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add a scope to an existing myobot API token, without rotating its secret
+"""Add a scope to an existing mag API token, without rotating its secret
 or affecting its other scopes. To narrow a token, revoke it and issue a
 replacement instead - scopes can only be added here, not removed, since
 removal has the same "did I get this right" risk as a fresh issuance

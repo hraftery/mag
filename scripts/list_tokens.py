@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List myobot API tokens and their scopes. Never prints the raw token or
+"""List mag API tokens and their scopes. Never prints the raw token or
 its hash - only what's needed to decide whether to revoke or extend one.
 
 Usage:

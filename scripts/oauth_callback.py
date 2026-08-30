@@ -4,7 +4,7 @@
 This helper starts a listener on 127.0.0.1:8787, which is where nginx
 proxies the redirect. It then prints the MYOB consent URL, which must be
 opened LOCALLY in a browser. Once consent is granted, the redirect will
-hit nginx via: https://myobot.example.com/callback
+hit nginx via: https://mag.example.com/callback
 
 It then exchanges the returned authorization code for an access + refresh
 token, and saves them to tokens.json.
@@ -30,7 +30,7 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REDIRECT_URI = "https://myobot.example.com/callback"
+REDIRECT_URI = "https://mag.example.com/callback"
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = 8787
 
