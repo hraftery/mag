@@ -7,7 +7,7 @@ touch.
 See README: "Client access: token issuer + thin proxy".
 
 Only a token's hash is ever stored on disk - the raw value is shown once at
-issuance (by issue_token.py) and cannot be recovered, only reissued.
+issuance (by `scripts/mag.py issue`) and cannot be recovered, only reissued.
 """
 
 import hashlib
@@ -58,7 +58,7 @@ def parse_scope(spec: str) -> dict:
 
 def issue(name: str, scope_specs: list[str]) -> tuple[str, dict]:
     """Create a new token. Returns (raw_token, record) - raw_token is shown
-    once by the caller (issue_token.py) and is never itself stored."""
+    once by the caller (scripts/mag.py issue) and is never itself stored."""
     raw_token = TOKEN_PREFIX + secrets.token_urlsafe(32)
     record = {
         "id": secrets.token_hex(4),

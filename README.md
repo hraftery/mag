@@ -21,9 +21,11 @@ _TBD — add install and configuration steps as the project takes shape._
 - [`app/`](app/) — the persistent application: `proxy_server.py` (the service
   itself) plus the `myob_client.py` / `token_store.py` library it's built on.
   This is what keeps running on the server.
-- [`scripts/`](scripts/) — one-off tools a human runs by hand: OAuth setup
-  (`oauth_callback.py`) and API token administration (`issue_token.py`,
-  `edit_token.py`, `revoke_token.py`, `list_tokens.py`).
+- [`scripts/`](scripts/) — one-off tools a human runs by hand. `mag.py` is
+  the single entry point (`mag.py oauth|issue|list|edit|revoke`); `oauth`
+  dispatches to `oauth_callback.py`, and `issue`/`list`/`edit`/`revoke` are
+  themselves subcommands of `tokens.py`. Both are still directly runnable
+  on their own too.
 - [`examples/`](examples/) — small standalone scripts exercising the MYOB API
   directly via `app/myob_client.py`, written while exploring what's possible
   (`list_invoices.py`, `spend_money_by_supplier.py`).
@@ -65,7 +67,7 @@ sudo certbot certonly --nginx -d mag.example.com
 
 ```bash
 # on the server
-MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 scripts/oauth_callback.py
+MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 scripts/mag.py oauth
 ```
 
 It prints the MYOB consent URL; open that in a browser on your own machine and approve access there. Your browser's redirect hits nginx on the server, which proxies it to the listener, completing the exchange. Run it once to seed a refresh token — everyday automation reads from `tokens.json` without needing the redirect server again.
@@ -198,7 +200,7 @@ sequenceDiagram
     participant GAS as Google Apps Script
 
     Note over Admin,mag: Issuance - local, out-of-band, one-time per token
-    Admin->>mag: issue_token(name, scopes)
+    Admin->>mag: mag.py issue --name ... --scope ...
     mag-->>Admin: token (shown once; only its hash is stored)
 
     Note over mag,MYOB: One MYOB OAuth grant, shared underneath every client
@@ -280,11 +282,11 @@ Other properties of the scheme:
   `mag` mirrors or curates. A typo'd prefix just matches nothing (fails
   closed, safe but confusing) rather than being caught at issuance time.
 - **Clients never choose their own scope.** It's set once, by whoever runs
-  `issue_token.py`, at issuance time — not negotiated or selected by the
+  `mag.py issue`, at issuance time — not negotiated or selected by the
   client itself. A client only ever discovers its own scope implicitly, via
   which calls succeed.
 - **Scopes are mutable independently of the token secret** —
-  `edit_token.py <id> --add-scope "Sale/Invoice:POST"` changes what a token
+  `mag.py edit <id> --add-scope "Sale/Invoice:POST"` changes what a token
   can do without rotating the credential itself. Revocation is a separate,
   one-field flip (`revoked: true`), with no effect on MYOB's own grant.
 - **`last_used_at` supports pruning stale access** before it's ever an
@@ -297,13 +299,13 @@ Token management (local, no server required — `api_tokens.json` is created
 on first use):
 
 ```bash
-python3 scripts/issue_token.py --name "laptop-explore" \
+python3 scripts/mag.py issue --name "laptop-explore" \
   --scope "Sale/Invoice:GET" --scope "Contact:GET"
 # prints the raw token once - save it, only its hash is stored
 
-python3 scripts/list_tokens.py                              # audit what exists
-python3 scripts/edit_token.py <id> --add-scope "..."         # widen, same secret
-python3 scripts/revoke_token.py <id>                         # instant, no MYOB-side effect
+python3 scripts/mag.py list                                # audit what exists
+python3 scripts/mag.py edit <id> --add-scope "..."          # widen, same secret
+python3 scripts/mag.py revoke <id>                          # instant, no MYOB-side effect
 ```
 
 The proxy itself (`app/proxy_server.py`) is a persistent service —
