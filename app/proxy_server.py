@@ -16,7 +16,7 @@ Unlike oauth_callback.py, this is a long-running service (many clients, many
 requests over time), not a one-shot listener.
 
 Usage (on the server):
-    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy python3 app/proxy_server.py
+    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy proxy_server.py
 """
 
 import json

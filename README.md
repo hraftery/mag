@@ -22,10 +22,9 @@ _TBD — add install and configuration steps as the project takes shape._
   itself) plus the `myob_client.py` / `token_store.py` library it's built on.
   This is what keeps running on the server.
 - [`scripts/`](scripts/) — one-off tools a human runs by hand. `mag.py` is
-  the single entry point (`mag.py oauth|issue|list|edit|revoke`); `oauth`
+  the *only* user interface (`mag.py oauth|issue|list|edit|revoke`); `oauth`
   dispatches to `oauth_callback.py`, and `issue`/`list`/`edit`/`revoke` are
-  themselves subcommands of `tokens.py`. Both are still directly runnable
-  on their own too.
+  themselves subcommands of `tokens.py` - neither is runnable directly.
 - [`examples/`](examples/) — small standalone scripts exercising the MYOB API
   directly via `app/myob_client.py`, written while exploring what's possible
   (`list_invoices.py`, `spend_money_by_supplier.py`).

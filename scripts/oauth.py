@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """One-shot MYOB OAuth2 authorization helper. Must be run ON THE SERVER.
 
 This helper starts a listener on 127.0.0.1:8787, which is where nginx
@@ -16,8 +15,8 @@ tokens.json directly rather than going through this flow again.
 MYOB's OAuth2.0 Authentication Guide:
 https://apisupport.myob.com/hc/en-us/articles/13065472856719
 
-Usage (on the server):
-    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy python3 oauth_callback.py
+Not runnable on its own - invoked via mag.py's "oauth" command:
+    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy mag.py oauth
 """
 
 import json
@@ -173,4 +172,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit("Run this via: mag.py oauth")

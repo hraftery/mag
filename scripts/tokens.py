@@ -1,28 +1,28 @@
-#!/usr/bin/env python3
 """Manage mag API tokens: issue, list, edit, revoke.
 
 Prints the raw token once at issuance - only its hash is stored
 (api_tokens.json), so a lost token can only be revoked and reissued, not
 recovered.
 
-Normally reached via mag.py (mag.py issue/list/edit/revoke), but also
-directly runnable on its own:
+Not runnable on its own - invoked via mag.py's issue/list/edit/revoke
+commands:
 
 Usage:
-    python3 scripts/tokens.py issue --name "laptop-explore" \\
+    mag.py issue --name "laptop-explore" \\
         --scope "Sale/Invoice:GET" \\
         --scope "Banking/SpendMoneyTxn:GET" \\
         --scope "Contact:GET"
-    python3 scripts/tokens.py list
-    python3 scripts/tokens.py edit 7f9a2e1c --add-scope "Sale/Invoice:POST"
-    python3 scripts/tokens.py revoke 7f9a2e1c
+    mag.py list
+    mag.py edit 7f9a2e1c --add-scope "Sale/Invoice:POST"
+    mag.py revoke 7f9a2e1c
 """
 
 import argparse
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app"))
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(ROOT_DIR, "app"))
 from token_store import add_scope, find_by_id, issue, load_records, revoke
 
 
@@ -125,4 +125,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit("Run this via: mag.py <issue|list|edit|revoke>")
