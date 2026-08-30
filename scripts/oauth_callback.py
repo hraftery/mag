@@ -38,7 +38,11 @@ AUTH_ENDPOINT = "https://secure.myob.com/oauth2/account/authorize"
 TOKEN_ENDPOINT = "https://secure.myob.com/oauth2/v1/authorize"
 # Apps must request the granular "sme-*" scopes:
 # https://developer.myob.com/api/myob-business-api/api-overview/scopes/
-SCOPE = "sme-company-file sme-contacts-customer sme-sales"
+# This covers invoices (sme-sales), customers (sme-contacts-customer), suppliers
+# (sme-contacts-supplier) and banking transactions (sme-banking). A token only
+# carries the scopes it was originally consented for, so re-run this script after
+# adding any new scope here.
+SCOPE = "sme-company-file sme-contacts-customer sme-contacts-supplier sme-sales sme-banking"
 
 TOKENS_FILE = os.path.join(ROOT_DIR, "tokens.json")
 

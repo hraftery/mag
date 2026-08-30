@@ -135,3 +135,21 @@ def api_get(path: str, params: dict | None = None) -> dict:
         raise SystemExit(f"API request to {path} failed after refresh ({e.code}): {e.read().decode(errors='replace')}")
     except URLError as e:
         raise SystemExit(f"API request to {path} failed: could not reach {url} ({e.reason})")
+
+
+def api_get_all(path: str, params: dict | None = None, page_size: int = 1000) -> list:
+    """GET every page of an AccountRight list endpoint (paging via $top/$skip
+    until a page comes back with fewer than page_size items) and return the
+    combined Items list. 1000 is MYOB's documented max page size."""
+    params = dict(params or {})
+    params["$top"] = page_size
+    skip = 0
+    items = []
+    while True:
+        params["$skip"] = skip
+        page = api_get(path, params=params)
+        page_items = page.get("Items", page if isinstance(page, list) else [])
+        items.extend(page_items)
+        if len(page_items) < page_size:
+            return items
+        skip += page_size
