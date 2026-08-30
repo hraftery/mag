@@ -6,6 +6,10 @@ Usage:
     python3 scripts/list_tokens.py
 """
 
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app"))
 from token_store import load_records
 
 

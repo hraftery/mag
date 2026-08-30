@@ -16,6 +16,18 @@ Early scaffolding — no code yet.
 
 _TBD — add install and configuration steps as the project takes shape._
 
+### Layout
+
+- [`app/`](app/) — the persistent application: `proxy_server.py` (the service
+  itself) plus the `myob_client.py` / `token_store.py` library it's built on.
+  This is what keeps running on the server.
+- [`scripts/`](scripts/) — one-off tools a human runs by hand: OAuth setup
+  (`oauth_callback.py`) and API token administration (`issue_token.py`,
+  `edit_token.py`, `revoke_token.py`, `list_tokens.py`).
+- [`examples/`](examples/) — small standalone scripts exercising the MYOB API
+  directly via `app/myob_client.py`, written while exploring what's possible
+  (`list_invoices.py`, `spend_money_by_supplier.py`).
+
 ## OAuth redirect server
 
 MYOB's OAuth2 flow requires a registered HTTPS redirect URI. We use:
@@ -294,13 +306,13 @@ python3 scripts/edit_token.py <id> --add-scope "..."         # widen, same secre
 python3 scripts/revoke_token.py <id>                         # instant, no MYOB-side effect
 ```
 
-The proxy itself (`scripts/proxy_server.py`) is a persistent service —
+The proxy itself (`app/proxy_server.py`) is a persistent service —
 unlike `oauth_callback.py`'s one-shot listener, it needs to be *running* for
 clients to reach it. Binds to `127.0.0.1:8788` only:
 
 ```bash
 # on the server
-MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 scripts/proxy_server.py
+MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 app/proxy_server.py
 ```
 
 nginx location, alongside the existing `/callback`:

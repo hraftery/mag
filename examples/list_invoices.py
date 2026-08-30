@@ -9,9 +9,13 @@ names differ from what's assumed below, the script prints the raw keys of
 the first invoice to make it easy to adjust.
 
 Usage:
-    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy python3 scripts/list_invoices.py
+    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy python3 examples/list_invoices.py
 """
 
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app"))
 from myob_client import api_get
 
 COLUMNS = [

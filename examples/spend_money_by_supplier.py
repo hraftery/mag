@@ -14,13 +14,14 @@ Always prints CSV to stdout; pass a filename as the one optional argument to
 also write it to that file.
 
 Usage:
-    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy scripts/spend_money_by_supplier.py [output.csv]
+    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy examples/spend_money_by_supplier.py [output.csv]
 """
 
 import csv
 import os
 import sys
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app"))
 from myob_client import api_get_all, load_tokens
 
 
