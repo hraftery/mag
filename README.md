@@ -152,6 +152,133 @@ to callers.
 - Deploy secrets (MYOB client secret, `myobot` API key) via GitHub Actions
   secrets, injected at deploy time — never committed, never echoed in logs.
 
+## Client access: token issuer + thin proxy (planned)
+
+Refines the transport underneath the [Google Apps Script integration](#google-apps-script-integration-planned)
+section above: rather than `myobot` exposing bespoke, domain-shaped
+endpoints (`POST /api/invoices`) behind one shared API key, it does two
+things only:
+
+1. **Issues its own lightweight bearer tokens** to clients — a personal-access-token
+   model, like generating a scoped API key in ClickUp or GitHub, rather than
+   making every client (GAS, ad hoc laptop scripts, Postman) do MYOB's OAuth2
+   dance itself.
+2. **Acts as a thin, unopinionated proxy** to the real MYOB API — it forwards
+   requests, it doesn't reshape them. Field names, endpoint shapes and error
+   bodies pass through unmodified, so MYOB's own docs stay the source of
+   truth for callers, and a MYOB schema change never requires a `myobot`
+   code change — only whichever client reads that particular field.
+
+There is exactly **one** MYOB OAuth grant, held only by `myobot`
+(`tokens.json`, from `oauth_callback.py`). It is never exposed to a caller.
+Every client — however many there are — instead holds one or more
+`myobot`-issued tokens, scoped far more narrowly than that one underlying
+grant, and reusable across as many calls as that workflow needs.
+
+### Negotiation flow
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant myobot
+    participant MYOB as MYOB API
+    participant Laptop as Laptop (explore)
+    participant GAS as Google Apps Script
+
+    Note over Admin,myobot: Issuance - local, out-of-band, one-time per token
+    Admin->>myobot: issue_token(name, scopes)
+    myobot-->>Admin: token (shown once; only its hash is stored)
+
+    Note over myobot,MYOB: One MYOB OAuth grant, shared underneath every client
+    Laptop->>myobot: GET /proxy/Sale/Invoice<br/>Bearer laptop-explore-token
+    myobot->>myobot: authorize(): scope check
+    myobot->>MYOB: GET Sale/Invoice<br/>Bearer MYOB access token
+    MYOB-->>myobot: 200 OK
+    myobot-->>Laptop: 200 OK
+
+    GAS->>myobot: POST /proxy/Sale/Invoice/Item<br/>Bearer gas-invoice-token
+    myobot->>myobot: authorize(): scope check
+    myobot->>MYOB: POST Sale/Invoice/Item<br/>Bearer MYOB access token
+    MYOB-->>myobot: 201 Created
+    myobot-->>GAS: 201 Created
+
+    Note over Laptop,myobot: Same token reused later, for an unrelated call
+    Laptop->>myobot: GET /proxy/Contact/Supplier<br/>Bearer laptop-explore-token
+    myobot->>myobot: authorize(): scope check
+    myobot->>MYOB: GET Contact/Supplier<br/>Bearer MYOB access token
+    MYOB-->>myobot: 200 OK
+    myobot-->>Laptop: 200 OK
+```
+
+Two auth levels, never crossed: MYOB only ever sees the one grant `myobot`
+holds; clients only ever see `myobot`-issued tokens, never a MYOB token.
+
+### Token scope schema
+
+A scope is a `(path prefix, HTTP methods)` pair — deliberately reusing
+MYOB's own URL namespace (`Contact/`, `Sale/Invoice`, `Banking/SpendMoneyTxn`,
+...) as the vocabulary instead of inventing one, and adding the one
+dimension MYOB's own `sme-*` OAuth scopes don't offer: **read vs write, at
+the individual endpoint level.**
+
+A token record:
+
+```json
+{
+  "id": "7f9a2e1c",
+  "name": "laptop-explore",
+  "token_hash": "sha256:...",
+  "scopes": [
+    {"prefix": "Sale/Invoice", "methods": ["GET"]},
+    {"prefix": "Banking/SpendMoneyTxn", "methods": ["GET"]},
+    {"prefix": "Contact", "methods": ["GET"]}
+  ],
+  "created_at": "2026-08-30T...",
+  "last_used_at": "2026-08-31T...",
+  "revoked": false
+}
+```
+
+Checked on every request by the entire authorization surface — small and
+disproportionately reviewed/tested, since it's the one thing standing
+between the single broad MYOB grant and any given caller:
+
+```python
+def authorize(token: str, method: str, path: str) -> bool:
+    record = lookup_by_hash(sha256(token))
+    if not record or record.revoked:
+        return False
+    record.last_used_at = now()
+    return any(
+        path_matches(path, scope["prefix"]) and method in scope["methods"]
+        for scope in record.scopes
+    )
+```
+
+`path_matches` must compare path *segments*, not do a naive
+`path.startswith(prefix)` — otherwise a future MYOB endpoint sharing a
+string prefix (e.g. a hypothetical `Sale/InvoiceTemplate`) would incorrectly
+satisfy a scope meant only for `Sale/Invoice`.
+
+Other properties of the scheme:
+
+- **No master list of endpoints lives inside `myobot`.** Prefixes are
+  free-form strings matched against whatever path a request actually hits —
+  the valid space is just MYOB's own documented namespace, not something
+  `myobot` mirrors or curates. A typo'd prefix just matches nothing (fails
+  closed, safe but confusing) rather than being caught at issuance time.
+- **Clients never choose their own scope.** It's set once, by whoever runs
+  `issue_token.py`, at issuance time — not negotiated or selected by the
+  client itself. A client only ever discovers its own scope implicitly, via
+  which calls succeed.
+- **Scopes are mutable independently of the token secret** —
+  `edit_token.py <id> --add-scope "Sale/Invoice:POST"` changes what a token
+  can do without rotating the credential itself. Revocation is a separate,
+  one-field flip (`revoked: true`), with no effect on MYOB's own grant.
+- **`last_used_at` supports pruning stale access** before it's ever an
+  incident — a token nobody's used in months is easy to spot and revoke
+  proactively rather than discover during a leak investigation.
+
 ## License
 
 Private. Not for distribution.
