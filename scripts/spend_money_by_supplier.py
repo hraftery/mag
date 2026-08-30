@@ -77,11 +77,12 @@ def main():
     supplier = pick_supplier()
     supplier_uid = supplier["UID"]
     
-    # Filtered client-side rather than via $filter=Contact/UID eq ... since
-    # MYOB's docs don't confirm the exact OData syntax for nested-field
-    # filters on this endpoint.
-    transactions = api_get_all("/Banking/SpendMoneyTxn", params={"$orderby": "Date desc"})
-    matching = [t for t in transactions if (t.get("Contact") or {}).get("UID") == supplier_uid]
+    # Server-side filter on the single Contact covering all lines.
+    params = {
+        "$filter": f"Contact/UID eq guid'{supplier_uid}'",
+        "$orderby": "Date desc"
+    }
+    matching = api_get_all("/Banking/SpendMoneyTxn", params=params)
     
     if not matching:
         print(f"No Spend Money transactions found for {contact_name(supplier)}.")
@@ -101,7 +102,7 @@ def main():
             memo = txn.get("Memo", "")
             lines = txn.get("Lines") or [{"Memo": "", "Amount": txn.get("AmountPaid", "")}]
             for line in lines:
-                row = [line.get("RowID", ""), date, line.get("Amount", ""), memo, line.get("Memo", "")]
+                row = [date, line.get("Amount", ""), memo, line.get("Memo", "")]
                 for writer in writers:
                     writer.writerow(row)
     finally:
