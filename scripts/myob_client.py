@@ -137,6 +137,61 @@ def api_get(path: str, params: dict | None = None) -> dict:
         raise SystemExit(f"API request to {path} failed: could not reach {url} ({e.reason})")
 
 
+class UpstreamUnreachable(Exception):
+    """MYOB's API couldn't be reached at all (network/DNS/timeout) - as
+    opposed to MYOB responding with an HTTP error status, which is a normal
+    response to relay, not a failure to raise."""
+
+
+def raw_request(
+    method: str,
+    path: str,
+    params: dict | None = None,
+    body: bytes | None = None,
+    content_type: str | None = None,
+) -> tuple[int, str | None, bytes]:
+    """Forward an arbitrary request to the AccountRight API for the business
+    file in tokens.json, refreshing the access token once on a 401.
+
+    Unlike api_get(), MYOB's own error responses are returned rather than
+    raised, so a caller (the proxy server) can relay them verbatim - it's
+    not this function's job to decide what's a "failure" for the caller.
+    Only a genuinely unreachable upstream raises (UpstreamUnreachable).
+    """
+    client_id = os.environ.get("MYOB_CLIENT_ID")
+    client_secret = os.environ.get("MYOB_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        raise SystemExit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
+
+    tokens = load_tokens()
+    business_id = tokens.get("businessId")
+    if not business_id:
+        raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run scripts/oauth_callback.py.")
+
+    url = f"{API_BASE}/{business_id}{path}"
+    if params:
+        url += "?" + urlencode(params)
+
+    def attempt(access_token: str) -> tuple[int, str | None, bytes]:
+        headers = _request_headers(access_token, client_id)
+        if body is not None:
+            headers["Content-Type"] = content_type or "application/json"
+        request = Request(url, data=body, method=method, headers=headers)
+        try:
+            with urlopen(request, timeout=TIMEOUT) as response:
+                return response.status, response.headers.get("Content-Type"), response.read()
+        except HTTPError as e:
+            return e.code, e.headers.get("Content-Type"), e.read()
+        except URLError as e:
+            raise UpstreamUnreachable(str(e.reason))
+
+    status, ctype, data = attempt(tokens["access_token"])
+    if status == 401:
+        tokens = refresh_tokens(tokens, client_id, client_secret)
+        status, ctype, data = attempt(tokens["access_token"])
+    return status, ctype, data
+
+
 def api_get_all(path: str, params: dict | None = None, page_size: int = 1000) -> list:
     """GET every page of an AccountRight list endpoint (paging via $top/$skip
     until a page comes back with fewer than page_size items) and return the

@@ -152,7 +152,7 @@ to callers.
 - Deploy secrets (MYOB client secret, `myobot` API key) via GitHub Actions
   secrets, injected at deploy time — never committed, never echoed in logs.
 
-## Client access: token issuer + thin proxy (planned)
+## Client access: token issuer + thin proxy
 
 Refines the transport underneath the [Google Apps Script integration](#google-apps-script-integration-planned)
 section above: rather than `myobot` exposing bespoke, domain-shaped
@@ -278,6 +278,47 @@ Other properties of the scheme:
 - **`last_used_at` supports pruning stale access** before it's ever an
   incident — a token nobody's used in months is easy to spot and revoke
   proactively rather than discover during a leak investigation.
+
+### Running it
+
+Token management (local, no server required — `api_tokens.json` is created
+on first use):
+
+```bash
+python3 scripts/issue_token.py --name "laptop-explore" \
+  --scope "Sale/Invoice:GET" --scope "Contact:GET"
+# prints the raw token once - save it, only its hash is stored
+
+python3 scripts/list_tokens.py                              # audit what exists
+python3 scripts/edit_token.py <id> --add-scope "..."         # widen, same secret
+python3 scripts/revoke_token.py <id>                         # instant, no MYOB-side effect
+```
+
+The proxy itself (`scripts/proxy_server.py`) is a persistent service —
+unlike `oauth_callback.py`'s one-shot listener, it needs to be *running* for
+clients to reach it. Binds to `127.0.0.1:8788` only:
+
+```bash
+# on the server
+MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 scripts/proxy_server.py
+```
+
+nginx location, alongside the existing `/callback`:
+
+```nginx
+location /proxy/ {
+    proxy_pass http://127.0.0.1:8788;
+}
+```
+
+A client then calls e.g. `GET https://myobot.example.com/proxy/Sale/Invoice`
+with `Authorization: Bearer <issued token>` and gets MYOB's response back
+unmodified. Every proxied request — success or reject — is appended to
+`proxy_audit.log` (`timestamp token-name method path -> status`).
+
+> Running this as a supervised systemd service (rather than a manual
+> foreground process) is planned but not yet set up — same open item as
+> `oauth_callback.py`'s deployment.
 
 ## License
 
