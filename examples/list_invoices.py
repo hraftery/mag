@@ -31,7 +31,7 @@ COLUMNS = [
 
 def main():
     data = api_get("/Sale/Invoice", params={"$orderby": "Date desc", "$top": 20})
-    invoices = data.get("Items", data if isinstance(data, list) else [])
+    invoices = data if isinstance(data, list) else data.get("Items", [])
     
     if not invoices:
         print("No invoices found.")

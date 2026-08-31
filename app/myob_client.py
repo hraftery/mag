@@ -203,7 +203,7 @@ def api_get_all(path: str, params: dict | None = None, page_size: int = 1000) ->
     while True:
         params["$skip"] = skip
         page = api_get(path, params=params)
-        page_items = page.get("Items", page if isinstance(page, list) else [])
+        page_items = page if isinstance(page, list) else page.get("Items", [])
         items.extend(page_items)
         if len(page_items) < page_size:
             return items

@@ -21,13 +21,15 @@ _TBD — add install and configuration steps as the project takes shape._
 - [`app/`](app/) — the persistent application: `proxy_server.py` (the service
   itself) plus the `myob_client.py` / `token_store.py` library it's built on.
   This is what keeps running on the server.
-- [`scripts/`](scripts/) — one-off tools a human runs by hand. `mag.py` is
+- [`cli/`](cli/) — one-off tools a human runs by hand. `mag.py` is
   the *only* user interface (`mag.py oauth|issue|list|edit|revoke`); `oauth`
-  dispatches to `oauth_callback.py`, and `issue`/`list`/`edit`/`revoke` are
+  dispatches to `oauth.py`, and `issue`/`list`/`edit`/`revoke` are
   themselves subcommands of `tokens.py` - neither is runnable directly.
 - [`examples/`](examples/) — small standalone scripts exercising the MYOB API
   directly via `app/myob_client.py`, written while exploring what's possible
   (`list_invoices.py`, `spend_money_by_supplier.py`).
+- [`tests/`](tests/) — unit and integration tests for `app/` and `cli/`. See
+  [Testing](#testing).
 
 ## OAuth redirect server
 
@@ -62,11 +64,11 @@ sudo certbot certonly --nginx -d mag.example.com
 
 ### OAuth callback script
 
-[`scripts/oauth_callback.py`](scripts/oauth_callback.py) is a one-shot script (stdlib only, no dependencies) that listens on `127.0.0.1:8787` for the single redirect described above, exchanges the authorization code for tokens, and saves them to `tokens.json`. Because the listener has to be reachable at the same address nginx proxies to, **run it on the server itself** (e.g. over SSH) — not on your laptop:
+[`cli/oauth.py`](cli/oauth.py) is a one-shot script (stdlib only, no dependencies) that listens on `127.0.0.1:8787` for the single redirect described above, exchanges the authorization code for tokens, and saves them to `tokens.json`. Because the listener has to be reachable at the same address nginx proxies to, **run it on the server itself** (e.g. over SSH) — not on your laptop:
 
 ```bash
 # on the server
-MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 scripts/mag.py oauth
+MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 cli/mag.py oauth
 ```
 
 It prints the MYOB consent URL; open that in a browser on your own machine and approve access there. Your browser's redirect hits nginx on the server, which proxies it to the listener, completing the exchange. Run it once to seed a refresh token — everyday automation reads from `tokens.json` without needing the redirect server again.
@@ -143,7 +145,7 @@ to callers.
   to a specific key in logs.
 - Don't rely on IP allowlisting — Apps Script's `UrlFetchApp` egresses from
   a large, shared Google range; auth is the only real boundary.
-- Service binds to `127.0.0.1` only (same pattern as `oauth_callback.py`);
+- Service binds to `127.0.0.1` only (same pattern as `oauth.py`);
   nginx remains the sole TLS-terminated, internet-facing front door.
 - Fail closed on misconfiguration — refuse to start if the API key env var
   is unset, no default/blank-key fallback.
@@ -183,7 +185,7 @@ things only:
    code change — only whichever client reads that particular field.
 
 There is exactly **one** MYOB OAuth grant, held only by `mag`
-(`tokens.json`, from `oauth_callback.py`). It is never exposed to a caller.
+(`tokens.json`, from `oauth.py`). It is never exposed to a caller.
 Every client — however many there are — instead holds one or more
 `mag`-issued tokens, scoped far more narrowly than that one underlying
 grant, and reusable across as many calls as that workflow needs.
@@ -298,17 +300,17 @@ Token management (local, no server required — `api_tokens.json` is created
 on first use):
 
 ```bash
-python3 scripts/mag.py issue --name "laptop-explore" \
+python3 cli/mag.py issue --name "laptop-explore" \
   --scope "Sale/Invoice:GET" --scope "Contact:GET"
 # prints the raw token once - save it, only its hash is stored
 
-python3 scripts/mag.py list                                # audit what exists
-python3 scripts/mag.py edit <id> --add-scope "..."          # widen, same secret
-python3 scripts/mag.py revoke <id>                          # instant, no MYOB-side effect
+python3 cli/mag.py list                                # audit what exists
+python3 cli/mag.py edit <id> --add-scope "..."          # widen, same secret
+python3 cli/mag.py revoke <id>                          # instant, no MYOB-side effect
 ```
 
 The proxy itself (`app/proxy_server.py`) is a persistent service —
-unlike `oauth_callback.py`'s one-shot listener, it needs to be *running* for
+unlike `oauth.py`'s one-shot listener, it needs to be *running* for
 clients to reach it. Binds to `127.0.0.1:8788` only:
 
 ```bash
@@ -331,7 +333,28 @@ unmodified. Every proxied request — success or reject — is appended to
 
 > Running this as a supervised systemd service (rather than a manual
 > foreground process) is planned but not yet set up — same open item as
-> `oauth_callback.py`'s deployment.
+> `oauth.py`'s deployment.
+
+## Testing
+
+Uses [pytest](https://docs.pytest.org/) + [pytest-mock](https://pytest-mock.readthedocs.io/)
+(the only non-stdlib dependencies in this repo - everything it tests
+remains stdlib-only; pytest-mock is just `unittest.mock` exposed as a
+`mocker` fixture, for consistency with `tmp_path`/`monkeypatch`/`capsys`).
+Every test redirects
+any file a module would touch (`tokens.json`, `api_tokens.json`,
+`proxy_audit.log`) to a scratch temp path first, so a run never reads or
+writes real MYOB credentials or the real audit log, and
+`app/proxy_server.py` / `cli/oauth.py`'s tests spin their real HTTP
+servers on an OS-assigned port rather than their hardcoded real one.
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest tests/ -v
+```
+
+Run a single file or test with `python3 -m pytest tests/test_token_store.py`
+or `-k <name>`.
 
 ## License
 

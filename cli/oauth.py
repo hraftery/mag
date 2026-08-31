@@ -92,6 +92,13 @@ def make_handler(expected_state: str, client_id: str, client_secret: str, result
             if parsed.path != "/callback":
                 self.send_response(404)
                 self.end_headers()
+                # This consumes the one-shot handle_request() below, so the
+                # real MYOB redirect (if it arrives after some stray request -
+                # a browser prefetch, a health check) has no listener left to
+                # catch it. Record it as an error rather than leaving result
+                # empty, so main() below exits with a clear message instead
+                # of crashing on a missing "tokens" key.
+                result["error"] = f"unexpected request to {parsed.path!r}, not /callback"
                 return
             
             query = parse_qs(parsed.query)

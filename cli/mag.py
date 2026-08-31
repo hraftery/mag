@@ -33,7 +33,7 @@ def main():
         print(__doc__)
         return
     
-    if command in SIMPLE_COMMANDS:
+    if command in OAUTH_COMMANDS:
         module = importlib.import_module("oauth")
         module.main()
     elif command in TOKEN_COMMANDS:
