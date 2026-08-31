@@ -23,76 +23,24 @@ An automation tool for [MYOB](https://www.myob.com/). Provides scripting and str
 - [`tests/`](tests/) — unit and integration tests for `app/` and `cli/`. See
   [Testing](#testing).
 
-## Setup
+## Architecture
 
-_TBD — add install and configuration steps as the project takes shape._
+To avoid introducing a second API, `mag` does not attempt to provide its own endpoints (eg. `POST /api/invoices`). Instead it does two things only:
 
-### OAuth redirect server
-
-MYOB's OAuth2 flow requires a registered HTTPS redirect URI. We use:
-`https://mag.example.com/callback`. It is served by nginx on the existing DigitalOcean server.
-
-### nginx config
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name mag.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/mag.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/mag.example.com/privkey.pem;
-
-    location /callback {
-        proxy_pass http://127.0.0.1:8787;
-    }
-}
-```
-
-### TLS certificate
-
-Added subdomain: `mag.example.com` in ICDsoft.
-
-Requested a certificate using the nginx plugin only as the authenticator (`certonly` — obtains the cert but leaves the conf file above untouched):
-
-```bash
-sudo certbot certonly --nginx -d mag.example.com
-```
-
-### OAuth callback script
-
-[`cli/oauth.py`](cli/oauth.py) is a one-shot script (stdlib only, no dependencies) that listens on `127.0.0.1:8787` for the single redirect described above, exchanges the authorization code for tokens, and saves them to `tokens.json`. Because the listener has to be reachable at the same address nginx proxies to, **run it on the server itself** (e.g. over SSH) — not on your laptop:
-
-```bash
-# on the server
-MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 cli/mag.py oauth
-```
-
-It prints the MYOB consent URL; open that in a browser on your own machine and approve access there. Your browser's redirect hits nginx on the server, which proxies it to the listener, completing the exchange. Run it once to seed a refresh token — everyday automation reads from `tokens.json` without needing the redirect server again.
-
-> Deployment of the callback listener to the server (as a systemd service, via
-> a GitHub Actions workflow) is planned but not yet set up.
-
-## Client access: token issuer + thin proxy
-
-Rather than `mag` exposing bespoke, domain-shaped
-endpoints (`POST /api/invoices`) behind one shared API key, it does two
-things only:
-
-1. **Issues its own lightweight bearer tokens** to clients — a personal-access-token
+1. **Issues its own lightweight bearer tokens** to clients. Uses a personal-access-token
    model, like generating a scoped API key in ClickUp or GitHub, rather than
-   making every client (GAS, ad hoc laptop scripts, Postman) do MYOB's OAuth2
+   making every client (eg. GAS, ad hoc scripts, Postman) do MYOB's OAuth2
    dance itself.
-2. **Acts as a thin, unopinionated proxy** to the real MYOB API — it forwards
+2. **Acts as a thin, unopinionated proxy** to the real MYOB API. It forwards
    requests, it doesn't reshape them. Field names, endpoint shapes and error
    bodies pass through unmodified, so MYOB's own docs stay the source of
    truth for callers, and a MYOB schema change never requires a `mag`
    code change — only whichever client reads that particular field.
 
 There is exactly **one** MYOB OAuth grant, held only by `mag`
-(`tokens.json`, from `oauth.py`). It is never exposed to a caller.
-Every client — however many there are — instead holds one or more
-`mag`-issued tokens, scoped far more narrowly than that one underlying
-grant, and reusable across as many calls as that workflow needs.
+(`tokens.json`, from `cli/oauth.py`). It is never exposed to a caller.
+On the other hand, every client holds one or more `mag`-issued tokens,
+scoped far more narrowly than the OAuth grant.
 
 ### Negotiation flow
 
@@ -129,10 +77,117 @@ sequenceDiagram
     mag-->>Laptop: 200 OK
 ```
 
-Two auth levels, never crossed: MYOB only ever sees the one grant `mag`
-holds; clients only ever see `mag`-issued tokens, never a MYOB token.
+The two auth levels are never crossed: MYOB only ever sees the one token `mag`
+requests; clients only ever see `mag`-issued tokens.
 
-### Token scope schema
+## Setup
+
+Steps to get `mag` running from scratch, in order.
+
+### 1. Get MYOB API credentials
+
+Register an app in the MYOB Developer Centre to get a `MYOB_CLIENT_ID` /
+`MYOB_CLIENT_SECRET` pair — see MYOB's
+[OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719)
+— with these scopes enabled: `sme-company-file`, `sme-contacts-customer`,
+`sme-contacts-supplier`, `sme-sales`, `sme-banking`. Every command below
+reads these two values from the environment; nothing is stored in the repo.
+
+### 2. Set up the OAuth redirect server
+
+MYOB's OAuth2 flow requires a registered HTTPS redirect URI. We use
+`https://mag.example.com/callback`, served by nginx on the existing
+DigitalOcean server.
+
+The subdomain is added in ICDsoft (though I'm not sure this is necessary). Ccertificate requested with `certbot`. `certonly` obtains the cert but leaves the nginx
+conf untouched. `--nginx` uses nginx to automatically provide the verification
+server.
+
+```bash
+sudo certbot certonly --nginx -d mag.example.com
+```
+
+Then a dedicated `sites-available` nginx config can be added.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name mag.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/mag.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/mag.example.com/privkey.pem;
+
+    location /callback {
+        proxy_pass http://127.0.0.1:8787;
+    }
+}
+```
+
+### 3. Authorize mag with MYOB
+
+[`cli/oauth.py`](cli/oauth.py) is a one-shot script that listens for the
+redirect above, exchanges the authorization code for tokens, and saves them to
+`tokens.json`. Because the listener has to be reachable at the same
+address nginx proxies to, **run it on the server itself** (e.g. over SSH):
+
+```bash
+# on the server
+MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... cli/mag.py oauth
+```
+
+It prints the MYOB consent URL. Open that in a browser on your own
+machine and approve access there. Your browser's redirect hits nginx on
+the server, which proxies it to the listener, completing the exchange.
+Run it once to seed a refresh token — everyday automation reads from
+`tokens.json` without needing the redirect server again.
+
+> Deployment of the callback listener to the server (as a systemd
+> service, via a GitHub Actions workflow) is planned but not yet set up.
+
+### 4. Run the proxy server
+
+Unlike the rest of the scripts in this repo, the proxy (`app/proxy_server.py`) is a persistent service. It binds to `127.0.0.1:8788` only:
+
+```bash
+# on the server
+MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... app/proxy_server.py
+```
+
+nginx location, alongside the existing `/callback`:
+
+```nginx
+location /proxy/ {
+    proxy_pass http://127.0.0.1:8788;
+}
+```
+
+A client then calls e.g. `GET https://mag.example.com/proxy/Sale/Invoice`
+with `Authorization: Bearer <issued token>` and gets MYOB's response back
+unmodified — see [Usage](#usage) below for issuing that token. Every
+proxied request — success or reject — is appended to `proxy_audit.log`
+(`timestamp token-name method path -> status`).
+
+> Running this as a supervised systemd service (rather than a manual
+> foreground process) is planned but not yet set up — same open item as
+> `oauth.py`'s deployment.
+
+## Usage
+
+Once the proxy is running (see [Setup](#setup)), day-to-day token
+management is local and needs no server access — `api_tokens.json` is
+created on first use:
+
+```bash
+python3 cli/mag.py issue --name "laptop-explore" \
+  --scope "Sale/Invoice:GET" --scope "Contact:GET"
+# prints the raw token once - save it, only its hash is stored
+
+python3 cli/mag.py list                                # audit what exists
+python3 cli/mag.py edit <id> --add-scope "..."          # widen, same secret
+python3 cli/mag.py revoke <id>                          # instant, no MYOB-side effect
+```
+
+## Token scope schema
 
 A scope is a `(path prefix, HTTP methods)` pair — deliberately reusing
 MYOB's own URL namespace (`Contact/`, `Sale/Invoice`, `Banking/SpendMoneyTxn`,
@@ -198,57 +253,15 @@ Other properties of the scheme:
   incident — a token nobody's used in months is easy to spot and revoke
   proactively rather than discover during a leak investigation.
 
-## Running it
-
-Token management (local, no server required — `api_tokens.json` is created
-on first use):
-
-```bash
-python3 cli/mag.py issue --name "laptop-explore" \
-  --scope "Sale/Invoice:GET" --scope "Contact:GET"
-# prints the raw token once - save it, only its hash is stored
-
-python3 cli/mag.py list                                # audit what exists
-python3 cli/mag.py edit <id> --add-scope "..."          # widen, same secret
-python3 cli/mag.py revoke <id>                          # instant, no MYOB-side effect
-```
-
-The proxy itself (`app/proxy_server.py`) is a persistent service —
-unlike `oauth.py`'s one-shot listener, it needs to be *running* for
-clients to reach it. Binds to `127.0.0.1:8788` only:
-
-```bash
-# on the server
-MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... python3 app/proxy_server.py
-```
-
-nginx location, alongside the existing `/callback`:
-
-```nginx
-location /proxy/ {
-    proxy_pass http://127.0.0.1:8788;
-}
-```
-
-A client then calls e.g. `GET https://mag.example.com/proxy/Sale/Invoice`
-with `Authorization: Bearer <issued token>` and gets MYOB's response back
-unmodified. Every proxied request — success or reject — is appended to
-`proxy_audit.log` (`timestamp token-name method path -> status`).
-
-> Running this as a supervised systemd service (rather than a manual
-> foreground process) is planned but not yet set up — same open item as
-> `oauth.py`'s deployment.
-
 ## Testing
 
 Uses [pytest](https://docs.pytest.org/) + [pytest-mock](https://pytest-mock.readthedocs.io/)
 (the only non-stdlib dependencies in this repo - everything it tests
 remains stdlib-only; pytest-mock is just `unittest.mock` exposed as a
 `mocker` fixture, for consistency with `tmp_path`/`monkeypatch`/`capsys`).
-Every test redirects
-any file a module would touch (`tokens.json`, `api_tokens.json`,
-`proxy_audit.log`) to a scratch temp path first, so a run never reads or
-writes real MYOB credentials or the real audit log, and
+Every test redirects any file a module would touch (`tokens.json`,
+`api_tokens.json`, `proxy_audit.log`) to a scratch temp path first, so a
+run never reads or writes real MYOB credentials or the real audit log, and
 `app/proxy_server.py` / `cli/oauth.py`'s tests spin their real HTTP
 servers on an OS-assigned port rather than their hardcoded real one.
 
