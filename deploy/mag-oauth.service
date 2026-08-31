@@ -1,0 +1,23 @@
+[Unit]
+Description=mag one-shot MYOB OAuth2 authorization (see cli/oauth.py) - run manually, not on boot
+
+[Service]
+Type=oneshot
+User=mag
+Group=mag
+WorkingDirectory=/opt/mag
+EnvironmentFile=/etc/mag/env
+ExecStart=/usr/bin/python3 /opt/mag/cli/mag.py oauth
+
+# Hardening (same rationale as mag-proxy.service).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/mag
+
+# Deliberately no [Install] section - this must never start on boot or be
+# left enabled. It blocks on one browser-driven redirect; run it by hand
+# only when seeding or re-seeding tokens.json:
+#   sudo systemctl start mag-oauth.service
+#   sudo journalctl -u mag-oauth.service -f    # to see the consent URL

@@ -22,6 +22,9 @@ An automation tool for [MYOB](https://www.myob.com/). Provides scripting and str
   (`list_invoices.py`, `spend_money_by_supplier.py`).
 - [`tests/`](tests/) — unit and integration tests for `app/` and `cli/`. See
   [Testing](#testing).
+- [`deploy/`](deploy/) — systemd unit templates and the install runbook for
+  running `app/proxy_server.py` / `cli/oauth.py` as services rather than
+  manual foreground processes. See [Setup](#setup).
 
 ## Architecture
 
@@ -141,8 +144,10 @@ the server, which proxies it to the listener, completing the exchange.
 Run it once to seed a refresh token — everyday automation reads from
 `tokens.json` without needing the redirect server again.
 
-> Deployment of the callback listener to the server (as a systemd
-> service, via a GitHub Actions workflow) is planned but not yet set up.
+The command above runs it as a manual foreground process, fine for this
+first run. [`deploy/`](deploy/) has a systemd unit for it too, invoked by
+hand only when (re-)authorizing rather than left running — see
+[deploy/README.md](deploy/README.md).
 
 ### 4. Run the proxy server
 
@@ -167,9 +172,10 @@ unmodified — see [Usage](#usage) below for issuing that token. Every
 proxied request — success or reject — is appended to `proxy_audit.log`
 (`timestamp token-name method path -> status`).
 
-> Running this as a supervised systemd service (rather than a manual
-> foreground process) is planned but not yet set up — same open item as
-> `oauth.py`'s deployment.
+Running it as above (a manual foreground process) works, but won't
+restart on crash or survive a reboot. For that, run it under systemd
+instead — unit file and install steps in
+[deploy/README.md](deploy/README.md).
 
 ## Usage
 

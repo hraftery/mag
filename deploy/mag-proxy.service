@@ -1,0 +1,31 @@
+[Unit]
+Description=mag proxy - issued-token to MYOB OAuth bridge (see app/proxy_server.py)
+After=network.target
+
+[Service]
+Type=simple
+User=mag
+Group=mag
+WorkingDirectory=/opt/mag
+EnvironmentFile=/etc/mag/env
+ExecStart=/usr/bin/python3 /opt/mag/app/proxy_server.py
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Hardening. Binds to 127.0.0.1 only (see proxy_server.py) - nginx is the
+# sole internet-facing front door, proxying /proxy/ to this port.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+# Needs write access for tokens.json (refreshed access tokens),
+# api_tokens.json (last_used_at bumps) and proxy_audit.log, all under the
+# repo root. Scoped to the whole checkout rather than enumerating the three
+# files individually, since ReadWritePaths on a not-yet-existing file is
+# fragile - simpler and more robust across first-run ordering.
+ReadWritePaths=/opt/mag
+
+[Install]
+WantedBy=multi-user.target
