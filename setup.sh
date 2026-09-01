@@ -172,6 +172,18 @@ systemctl daemon-reload
 systemctl enable mag-proxy.service
 systemctl restart mag-proxy.service   # restart (not start) so a redeploy picks up new code too
 
+# `restart` above returning success only means the process was launched, not
+# that it's still running - Type=simple doesn't wait around to confirm that.
+# Check for a crash (eg. import error, port already in use) after a short pause.
+sleep 2
+if ! systemctl is-active --quiet mag-proxy.service; then
+    echo "ERROR: mag-proxy.service isn't running right after being" >&2
+    echo "       (re)started. Check what's wrong. These commands may help:" >&2
+    echo "           systemctl status mag-proxy.service" >&2
+    echo "           journalctl -u mag-proxy.service -n 50 --no-pager" >&2
+    exit 1
+fi
+
 # --- 5. global `mag` CLI ----------------------------------------------
 # A thin wrapper, since we don't need the complexity of a setuptools project.
 # Puts `mag` on PATH, loads the same .env as mag-proxy.service does, and
@@ -205,11 +217,9 @@ EOF
 chmod 755 /usr/local/bin/mag
 
 echo "==> done."
-echo "    status:  systemctl status mag-proxy.service"
-echo "    logs:    journalctl -u mag-proxy.service -f"
 if [[ ! -f "$MAG_HOME/var/tokens.json" ]]; then
-    echo "    NEXT STEP: run 'newgrp $MAG_GROUP' to pick up the new group"
-    echo "               membership, then run 'mag oauth' to authorize with"
-    echo "               MYOB. Finally, run:"
+    echo "NEXT STEP: run 'newgrp $MAG_GROUP' to pick up the new group"
+    echo "           membership, then run 'mag oauth' to authorize with"
+    echo "           MYOB. Finally, run:"
     echo "               sudo systemctl restart mag-proxy.service"
 fi
