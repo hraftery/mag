@@ -42,6 +42,22 @@ ENV_FILE="$MAG_HOME/.env"
 
 echo "==> mag setup running from $MAG_HOME"
 
+# git reports "dubious ownership" for any user other than whoever pulled
+# the repo. We run git as root here, and later $MAG_HOME will be owned by
+# $MAG_USER. So tell git it's okay for group members to run git commands.
+git config --system --add safe.directory "$MAG_HOME"
+# So `git pull` as a group member works too.
+git -C "$MAG_HOME" config core.sharedRepository group
+
+# Refuse to deploy an uncommitted working tree. The rollback mechanism
+# (see README.md) only works if whatever's actually running always
+# corresponds to a real commit. Includes untracked files (--porcelain).
+if [[ -n "$(git -C "$MAG_HOME" status --porcelain)" ]]; then
+    echo "REFUSING to deploy: $MAG_HOME has uncommitted changes." >&2
+    echo "Commit or stash them first - see README.md#upgrade for why." >&2
+    exit 1
+fi
+
 # --- 1. system user -----------------------------------------------------
 # The systemd unit runs as this user; it also needs to own the checkout
 # (tokens.json / mag_tokens.json / proxy_audit.log live under var/; .env
@@ -67,11 +83,6 @@ chmod -R g+rwX "$MAG_HOME"
 # Both the root and var/ specifically get g+s. Applies to things created
 # within *after* the bit is set, so var/ needs its own.
 chmod g+s "$MAG_HOME" "$MAG_HOME/var"
-# Now MAG_HOME is owned by MAG_USER, git will spit "dubious ownership" for
-# any other user. Tell it it's okay for group members to run git here.
-git config --system --add safe.directory "$MAG_HOME"
-# So `git pull` as a group member works too
-git -C "$MAG_HOME" config core.sharedRepository group
 
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
     # Add user to mag group to save doing `sudo -u mag` all the time.

@@ -74,9 +74,21 @@ Then restart the proxy so it picks up the new `tokens.json`:
 
 ## Upgrade
 
-Update `mag` by running `git pull`. Optionally, choose a version other than the lastest with `git checkout`.
+Upgrading or downgrading is a two step process. First update `mag` by running `git pull`. Optionally, choose a version other than the lastest with `git checkout` (see "Rollback" below).
 
-Then simply run [`setup.sh`](setup.sh) again to redeploy.
+Then simply run [`setup.sh`](setup.sh) again to redeploy. It is idempotent and respects configuration that already exists.
+
+Note that `git` is an inherent part of the version management scheme - `setup.sh` will refuse to run against an uncommitted working tree (`git status` must be clean). That's what makes rollback (see below) reliable. Whatever is actually deployed always corresponds to a real commit, never to local edits that can't be retrieved.
+
+### Rollback
+
+Since upgrading is just "point the checkout at a different commit, then redeploy", rolling back is the same operation, backwards:
+
+```bash
+git log --oneline       # find the commit to go back to
+git checkout <sha>
+sudo ./setup.sh
+```
 
 ## Usage
 
