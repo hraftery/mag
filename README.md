@@ -1,8 +1,8 @@
 # mag
 
-The MYOB API Gateway. Provides a convenient gateway so the [MYOB](https://www.myob.com/) [API](https://developer.myob.com/api/myob-business-api/api-overview/) can be accessed securely from anywhere that can make a web call - a Google Apps Script, your favourite business automation tool, or a script on your own computer.
+The MYOB API Gateway. Provides a convenient Internet endpoint so the [MYOB](https://www.myob.com/) [API](https://developer.myob.com/api/myob-business-api/api-overview/) can be accessed securely from anywhere that can make a web call - a Google Apps Script, your favourite business automation tool, or a script on your own computer.
 
-Must be installed on an internet accessible server.
+Must be installed on an Internet accessible server.
 
 ## Setup
 
@@ -38,12 +38,17 @@ cd /opt/mag
 sudo ./setup.sh
 ```
 
-[`setup.sh`](setup.sh) is the entire install and update mechanism. Re-run it after a `git pull` to redeploy. It creates a dedicated `mag` user, adds the nginx site (`location /callback` and `location /proxy/`), the `mag-proxy` systemd unit (see
-[deploy/README.md](deploy/README.md) for why systemd), and a global `mag` CLI wrapper.
+[`setup.sh`](setup.sh) will:
 
-It also prompts for values required to fill out `.env` (based on [`.env.example`](.env.example)): your MYOB credentials from step 1, and the domain this server is reachable at.
+- create a dedicated `mag` user;
+- add the nginx site configuration (`location /callback` and `location /proxy/`) using [mag-proxy.conf](deploy/mag-proxy.conf) as a template;
+- add the `mag-proxy` systemd unit (see
+[deploy/README.md](deploy/README.md) for why systemd) using [mag-proxy.service](deploy/mag-proxy.service) as a template;
+- and install a global `mag` CLI wrapper.
 
-`.env` is the key to ensure `mag` can run without a separate secrets store and the various templates can be instantiated automatically.
+It also prompts for values required to create or update `.env` (based on [`.env.example`](.env.example)). That includes your MYOB credentials from step 1, and the domain this server is reachable at.
+
+`.env` is the key to ensure `mag` can be configured and deployed without a separate secrets store, and the various templates can be instantiated automatically.
 
 `setup.sh` also adds you to the `mag` group, so you can call `mag`/`git` commands. See [deploy/README.md](deploy/README.md) for why that's safe here. The new group doesn't take effect immediately, so start
 a fresh login or run `newgrp mag` before continuing.
@@ -66,6 +71,12 @@ Then restart the proxy so it picks up the new `tokens.json`:
 `sudo systemctl restart mag-proxy.service`.
 
 `mag` is now ready for clients - see [Usage](#usage) for issuing them a token and how they call the proxy with it.
+
+## Upgrade
+
+Update `mag` by running `git pull`. Optionally, choose a version other than the lastest with `git checkout`.
+
+Then simply run [`setup.sh`](setup.sh) again to redeploy.
 
 ## Usage
 
@@ -184,6 +195,15 @@ sequenceDiagram
 ```
 
 The two auth levels are never crossed: MYOB only ever sees the token `mag` requests and clients only ever see `mag`-issued tokens.
+
+### Why systemd
+
+The proxy server ([`proxy.py`](mag/proxy/proxy.py)) benefits from restart-on-crash, start-on-boot, and centralised logs. `systemd` is widely pre-installed and is built for supervising a network daemon like this.
+
+## Why the `mag` user/group
+
+The runtime data files, (`tokens.json`, `mag_tokens.json`, `.env`) need to be readable and
+writable both by the `mag-proxy` systemd unit (which runs as the `mag` user) and by the login user that runs `mag` commands by hand. Instead of requiring `sudo -u mag` before every command to keep file ownership from drifting, the login user is added to the `mag` group. The setuid bit is ignored on scripts, so instead `setup.sh` group-shares the checkout: files are `660` rather than `600`, and whoever ran `setup.sh` (via `sudo`) is added to the `mag` group. This doesn't reduce security because that's already someone with root on this box. Group access grants nothing `sudo` doesn't already give them.
 
 ### Token scope schema
 
