@@ -1,62 +1,141 @@
 # mag
 
-An automation tool for [MYOB](https://www.myob.com/). Provides scripting and streamlining of recurring MYOB workflows such as invoice generation.
+The MYOB API Gateway. Provides a convenient gateway so the [MYOB](https://www.myob.com/) [API](https://developer.myob.com/api/myob-business-api/api-overview/) can be accessed securely from anywhere that can make a web call - a Google Apps Script, your favourite business automation tool, or a script on your own computer.
 
-## Goals
+Must be installed on an internet accessible server.
 
-- Automate repetitive MYOB tasks via the MYOB API
-- Reduce manual data entry and reporting overhead
-- Keep credentials and business data local/private
+## Setup
 
-## Layout
+Steps to get `mag` running from scratch, are as follows.
 
-- [`mag/`](mag/) — a plain, uninstalled Python package (no pip/venv - the
-  `mag` wrapper and the systemd unit both just put this checkout on
-  `PYTHONPATH`; see [Setup](#setup)):
-  - [`mag/proxy/`](mag/proxy/) — the persistent application: `proxy.py`, the
-    service that keeps running on the server.
-  - [`mag/lib/`](mag/lib/) — the library `proxy.py` is built on
-    (`myob_client.py`, `token_store.py`), shared with `mag/cli/` and
-    `examples/` below - none of it is proxy-specific.
-  - [`mag/cli/`](mag/cli/) — one-off tools a human runs by hand, via the
-    installed `mag` command (`mag oauth|issue|list|edit|revoke`).
-    `__main__.py` is the *only* user interface; `oauth` dispatches to
-    `oauth.py`, and `issue`/`list`/`edit`/`revoke` are themselves
-    subcommands of `tokens.py` - neither is runnable directly. (Named
-    `__main__.py`, not `mag.py` - see its docstring for why.)
-- [`examples/`](examples/) — small standalone scripts exercising the MYOB API
-  directly via `mag/lib/myob_client.py`, written while exploring what's
-  possible (`list_invoices.py`, `spend_money_by_supplier.py`). Unlike
-  `mag/`, runnable with no setup beyond MYOB credentials.
-- [`tests/`](tests/) — unit and integration tests for `mag/`. See
+### 1. Get MYOB API credentials
+
+Register an app in the MYOB Developer Centre. Note the `MYOB_CLIENT_ID` / `MYOB_CLIENT_SECRET` pair for use in step 3. See MYOB's [OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719).
+
+Enable these scopes: `sme-company-file`, `sme-contacts-customer`, `sme-contacts-supplier`, `sme-sales`, `sme-banking`.
+
+### 2. Point a (sub)domain at the server and get a TLS cert
+
+MYOB's OAuth2 flow requires a registered HTTPS redirect URI. Register a domain or add a subdomain and ensure it resolves to your server.
+
+The server requires a web engine to handle the redirect from MYOB. The `setup.sh` script assumes the server is running `nginx` and will produce a suitable site configuration for it. Otherwise manual configuration is required.
+
+The domain requires a TLS certificate. You can generate one with `certbot`:
+
+```bash
+sudo certbot certonly --nginx -d <YOUR_DOMAIN>
+```
+
+- `certonly` obtains the cert without adding a site configuration for it, leaving the nginx
+conf untouched.
+- `--nginx` uses nginx itself to serve the certification verification challenge.
+
+### 3. Install mag
+
+```bash
+git clone <this-repo-url> /opt/mag   # or wherever - setup.sh doesn't assume a path
+cd /opt/mag
+sudo ./setup.sh
+```
+
+[`setup.sh`](setup.sh) is the entire install and update mechanism. Re-run it after a `git pull` to redeploy. It creates a dedicated `mag` user, adds the nginx site (`location /callback` and `location /proxy/`), the `mag-proxy` systemd unit (see
+[deploy/README.md](deploy/README.md) for why systemd), and a global `mag` CLI wrapper.
+
+It also prompts for values required to fill out `.env` (based on [`.env.example`](.env.example)): your MYOB credentials from step 1, and the domain this server is reachable at.
+
+`.env` is the key to ensure `mag` can run without a separate secrets store and the various templates can be instantiated automatically.
+
+`setup.sh` also adds you to the `mag` group, so you can call `mag`/`git` commands. See [deploy/README.md](deploy/README.md) for why that's safe here. The new group doesn't take effect immediately, so start
+a fresh login or run `newgrp mag` before continuing.
+
+### 4. Authorize `mag` with MYOB
+
+`mag oauth` is a one-shot command that listens for the redirect
+registered above, exchanges the authorization code for tokens, and saves
+them to `tokens.json`. Run it on the server, once, now that `.env` is
+populated:
+
+```bash
+mag oauth
+```
+
+It will show the MYOB consent URL. Open that in a browser on your own machine and approve access. Your browser's redirect hits nginx on the server, which proxies it to `mag oauth`'s listener, completing the
+exchange.
+
+Run it once to seed a refresh token. After that, tokens are read from `tokens.json` without needing this step to be repeated, unless the refresh token is revoked or expires.
+
+Then restart the proxy so it picks up the new `tokens.json`:
+
+`sudo systemctl restart mag-proxy.service`.
+
+A client can then request something like `GET https://<MAG_DOMAIN>/proxy/Sale/Invoice` with
+`Authorization: Bearer <issued token>` and get MYOB's response back. See [Usage](#usage) for issuing that token. Every request is appended to `proxy_audit.log`.
+
+## Usage
+
+After completing [Setup](#setup), issue a client token with:
+
+```bash
+mag issue --name "explore" \
+  --scope "Sale/Invoice:GET" --scope "Contact:GET"
+# prints the raw token once, so save it
+
+mag list                           # audit what exists
+mag edit <id> --add-scope "..."    # widen, same secret
+mag revoke <id>                    # instant, no MYOB-side effect
+```
+
+Note client tokens are issued without content with the MYOB API. Indeed, even the `mag` proxy is not required.
+
+`mag status` shows service state, recent logs, MYOB authorization, issued tokens, and recent proxy activity at a glance - see [deploy/README.md](deploy/README.md#day-to-day).
+
+## Testing
+
+Uses [pytest](https://docs.pytest.org/) + [pytest-mock](https://pytest-mock.readthedocs.io/)
+(the only non-stdlib dependencies in this repo - everything it tests
+remains stdlib-only; pytest-mock is just `unittest.mock` exposed as a
+`mocker` fixture, for consistency with `tmp_path`/`monkeypatch`/`capsys`).
+Every test redirects any file a module would touch (`tokens.json`,
+`mag_tokens.json`, `proxy_audit.log`) to a scratch temp path first, so a
+run never reads or writes real MYOB credentials or the real audit log, and
+`mag/proxy/proxy.py` / `mag/cli/oauth.py`'s tests spin their real HTTP
+servers on an OS-assigned port rather than their hardcoded real one.
+
+```bash
+pip install -r requirements-dev.txt
+python3 -m pytest tests/ -v
+```
+
+Run a single file or test with `python3 -m pytest tests/test_token_store.py`
+or `-k <name>`.
+
+## Reference
+
+### Layout
+
+- [`mag/`](mag/) — a plain, uninstalled Python package (no pip/venv requirements)
+  - [`mag/proxy/`](mag/proxy/) — the persistent application: `proxy.py` is a service that runs on the server and provides the gateway to the MYOB API.
+  - [`mag/lib/`](mag/lib/) — shared functionality.
+  - [`mag/cli/`](mag/cli/) — a command-line interface to perform individual tasks.
+- [`examples/`](examples/) — standalone scripts that demonstrate how to exercise the MYOB API via `mag/lib/myob_client.py`.
+- [`tests/`](tests/) — unit and integration tests. See
   [Testing](#testing).
-- [`setup.sh`](setup.sh) — installs/updates mag on the server (nginx site,
-  `mag-proxy` systemd unit, global `mag` CLI wrapper). [`deploy/`](deploy/)
-  holds the templates it uses. See [Setup](#setup).
-- [`.env.example`](.env.example) — template for `.env` (gitignored), the
-  one place a deployment's MYOB credentials and domain are configured.
-  `setup.sh` creates/completes it interactively; see [Setup](#setup).
+- [`setup.sh`](setup.sh) — installs or updates `mag` on the server. See [Setup](#setup).
+- [`deploy/`](deploy/)
+  holds the templates used by `setup.sh`. 
+- [`.env.example`](.env.example) — template for `.env`, the local store for MYOB credentials and domain created by `setup.sh`.
 
-## Architecture
+### Architecture
 
-To avoid introducing a second API, `mag` does not attempt to provide its own endpoints (eg. `POST /api/invoices`). Instead it does two things only:
+`mag` sets up a gateway that redirects requests from authenticated clients to the MYOB API. To avoid introducing a second API, `mag` does not attempt to provide its own endpoints (eg. `POST /api/invoices`). Instead it does two things only:
 
-1. **Issues its own lightweight bearer tokens** to clients. Uses a personal-access-token
-   model, like generating a scoped API key in ClickUp or GitHub, rather than
-   making every client (eg. GAS, ad hoc scripts, Postman) do MYOB's OAuth2
-   dance itself.
-2. **Acts as a thin, unopinionated proxy** to the real MYOB API. It forwards
-   requests, it doesn't reshape them. Field names, endpoint shapes and error
-   bodies pass through unmodified, so MYOB's own docs stay the source of
-   truth for callers, and a MYOB schema change never requires a `mag`
-   code change — only whichever client reads that particular field.
+1. **Issues its own lightweight bearer tokens** to clients. Uses a personal-access-token model, like generating a scoped API key in ClickUp or GitHub. This relieves every client (eg. GAS, ad hoc scripts, Postman) from having to do MYOB's OAuth2 dance itself.
+2. **Acts as a thin, unopinionated proxy** to the real MYOB API. It forwards requests without modification, so MYOB's own docs stay the source of truth for callers and changes to MYOB's schema don't require a change to `mag`.
 
-There is exactly **one** MYOB OAuth grant, held only by `mag`
-(`tokens.json`, from `mag/cli/oauth.py`). It is never exposed to a caller.
-On the other hand, every client holds one or more `mag`-issued tokens,
+There is exactly **one** MYOB OAuth grant, held only by `mag` (`tokens.json`, from `mag/cli/oauth.py`). It is never exposed to a caller. On the other hand, every client holds one or more `mag`-issued tokens,
 scoped far more narrowly than the OAuth grant.
 
-### Negotiation flow
+#### Negotiation flow
 
 ```mermaid
 sequenceDiagram
@@ -91,116 +170,9 @@ sequenceDiagram
     mag-->>Laptop: 200 OK
 ```
 
-The two auth levels are never crossed: MYOB only ever sees the one token `mag`
-requests; clients only ever see `mag`-issued tokens.
+The two auth levels are never crossed: MYOB only ever sees the token `mag` requests and clients only ever see `mag`-issued tokens.
 
-## Setup
-
-Steps to get `mag` running from scratch, in order.
-
-### 1. Get MYOB API credentials
-
-Register an app in the MYOB Developer Centre to get a `MYOB_CLIENT_ID` /
-`MYOB_CLIENT_SECRET` pair — see MYOB's
-[OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719)
-— with these scopes enabled: `sme-company-file`, `sme-contacts-customer`,
-`sme-contacts-supplier`, `sme-sales`, `sme-banking`. These end up in
-`.env` (step 3) — nothing is stored in the repo.
-
-### 2. Point a subdomain at this server and get a TLS cert
-
-MYOB's OAuth2 flow requires a registered HTTPS redirect URI. We use
-`https://mag.example.com/callback`, served by nginx on the existing
-DigitalOcean server — everything below assumes that server, and the nginx
-already running on it for other things.
-
-Subdomain added in ICDsoft (though it's not obviously necessary — nginx
-will happily terminate TLS for any hostname pointed at the box). Certificate
-requested with `certbot`; `certonly` obtains the cert but leaves the nginx
-conf untouched, `--nginx` uses nginx itself to serve the verification
-challenge:
-
-```bash
-sudo certbot certonly --nginx -d mag.example.com
-```
-
-### 3. Install mag
-
-```bash
-git clone <this-repo-url> /opt/mag   # or wherever - setup.sh doesn't assume a path
-cd /opt/mag
-sudo ./setup.sh
-```
-
-[`setup.sh`](setup.sh) is the entire install *and* update mechanism —
-re-run it after a `git pull` to redeploy. It creates a dedicated `mag`
-system user, installs the nginx site (`location /callback` and
-`location /proxy/`, alongside anything else already on this nginx), the
-`mag-proxy` systemd unit (restart-on-crash, start-on-boot — see
-[deploy/README.md](deploy/README.md) for why systemd), and a global `mag`
-CLI wrapper.
-
-It also prompts, right there in the terminal, for anything missing from
-`.env` (a gitignored file at the repo root — see
-[`.env.example`](.env.example)): your MYOB credentials from step 1, and
-the domain this server is reachable at. `.env` is the one place a fresh
-install is configured — no separate secrets directory, no editing
-templates by hand — and it's loaded by both the systemd unit and the
-`mag` CLI wrapper, so every subsequent `mag` command already has these
-values available too.
-
-It also adds you to the `mag` group, so plain `mag`/`git` commands work
-without `sudo -u mag` — see [deploy/README.md](deploy/README.md) for why
-that's safe here. That only takes effect in a new session, though — start
-a fresh login (or run `newgrp mag`) before step 4 below.
-
-### 4. Authorize mag with MYOB
-
-`mag oauth` is a one-shot command that listens for the redirect
-registered above, exchanges the authorization code for tokens, and saves
-them to `tokens.json`. Run it on the server, once, now that `.env` is
-populated:
-
-```bash
-mag oauth
-```
-
-It prints the MYOB consent URL. Open that in a browser on your own
-machine and approve access there. Your browser's redirect hits nginx on
-the server, which proxies it to `mag oauth`'s listener, completing the
-exchange. Run it once to seed a refresh token — everyday automation reads
-from `tokens.json` without needing this step again (until a refresh token
-is revoked or expires, in which case: run it again).
-
-Then restart the proxy so it picks up the new `tokens.json`:
-`sudo systemctl restart mag-proxy.service`. A client can then call e.g.
-`GET https://mag.example.com/proxy/Sale/Invoice` with
-`Authorization: Bearer <issued token>` and get MYOB's response back
-unmodified — see [Usage](#usage) below for issuing that token. Every
-proxied request — success or reject — is appended to `proxy_audit.log`
-(`timestamp token-name method path -> status`).
-
-## Usage
-
-`mag status` shows service state, recent logs, MYOB authorization, issued
-tokens, and recent proxy activity at a glance - see
-[deploy/README.md](deploy/README.md#day-to-day).
-
-Once the proxy is running (see [Setup](#setup)), day-to-day token
-management is local and needs no server access — `api_tokens.json` is
-created on first use:
-
-```bash
-mag issue --name "laptop-explore" \
-  --scope "Sale/Invoice:GET" --scope "Contact:GET"
-# prints the raw token once - save it, only its hash is stored
-
-mag list                                # audit what exists
-mag edit <id> --add-scope "..."         # widen, same secret
-mag revoke <id>                         # instant, no MYOB-side effect
-```
-
-## Token scope schema
+### Token scope schema
 
 A scope is a `(path prefix, HTTP methods)` pair — deliberately reusing
 MYOB's own URL namespace (`Contact/`, `Sale/Invoice`, `Banking/SpendMoneyTxn`,
@@ -265,26 +237,6 @@ Other properties of the scheme:
 - **`last_used_at` supports pruning stale access** before it's ever an
   incident — a token nobody's used in months is easy to spot and revoke
   proactively rather than discover during a leak investigation.
-
-## Testing
-
-Uses [pytest](https://docs.pytest.org/) + [pytest-mock](https://pytest-mock.readthedocs.io/)
-(the only non-stdlib dependencies in this repo - everything it tests
-remains stdlib-only; pytest-mock is just `unittest.mock` exposed as a
-`mocker` fixture, for consistency with `tmp_path`/`monkeypatch`/`capsys`).
-Every test redirects any file a module would touch (`tokens.json`,
-`api_tokens.json`, `proxy_audit.log`) to a scratch temp path first, so a
-run never reads or writes real MYOB credentials or the real audit log, and
-`mag/proxy/proxy.py` / `mag/cli/oauth.py`'s tests spin their real HTTP
-servers on an OS-assigned port rather than their hardcoded real one.
-
-```bash
-pip install -r requirements-dev.txt
-python3 -m pytest tests/ -v
-```
-
-Run a single file or test with `python3 -m pytest tests/test_token_store.py`
-or `-k <name>`.
 
 ## License
 
