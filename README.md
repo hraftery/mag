@@ -51,16 +51,13 @@ a fresh login or run `newgrp mag` before continuing.
 ### 4. Authorize `mag` with MYOB
 
 `mag oauth` is a one-shot command that listens for the redirect
-registered above, exchanges the authorization code for tokens, and saves
-them to `tokens.json`. Run it on the server, once, now that `.env` is
-populated:
+registered above, exchanges the authorization code for tokens, and saves them to `tokens.json`. Run it on the server, once, now that `.env` is populated:
 
 ```bash
 mag oauth
 ```
 
-It will show the MYOB consent URL. Open that in a browser on your own machine and approve access. Your browser's redirect hits nginx on the server, which proxies it to `mag oauth`'s listener, completing the
-exchange.
+It will show the MYOB consent URL. Open that in a browser on your own machine and approve access. Your browser's redirect hits nginx on the server, which proxies it to `mag oauth`'s listener, completing the exchange.
 
 Run it once to seed a refresh token. After that, tokens are read from `tokens.json` without needing this step to be repeated, unless the refresh token is revoked or expires.
 
@@ -68,8 +65,7 @@ Then restart the proxy so it picks up the new `tokens.json`:
 
 `sudo systemctl restart mag-proxy.service`.
 
-A client can then request something like `GET https://<MAG_DOMAIN>/proxy/Sale/Invoice` with
-`Authorization: Bearer <issued token>` and get MYOB's response back. See [Usage](#usage) for issuing that token. Every request is appended to `proxy_audit.log`.
+`mag` is now ready for clients - see [Usage](#usage) for issuing them a token and how they call the proxy with it.
 
 ## Usage
 
@@ -85,7 +81,24 @@ mag edit <id> --add-scope "..."    # widen, same secret
 mag revoke <id>                    # instant, no MYOB-side effect
 ```
 
-Note client tokens are issued without content with the MYOB API. Indeed, even the `mag` proxy is not required.
+Note client tokens are issued without contact with the MYOB API. Indeed, even the `mag` proxy is not required.
+
+A client can then call the gateway directly with that token:
+
+```bash
+curl -H "Authorization: Bearer <issued token>" https://<MAG_DOMAIN>/proxy/Sale/Invoice
+```
+
+`mag` forwards the request to MYOB and relays the response back unmodified - see [Architecture](#architecture). Every request is appended to `proxy_audit.log`.
+
+### Re-authorizing with MYOB
+
+The one MYOB OAuth grant (from [Setup step 4](#4-authorize-mag-with-myob)) can expire or be revoked on MYOB's side independently of anything client tokens do - it's unrelated to any individual client token above and isn't fixed by reissuing one. If proxied requests start failing for that reason, re-run the same one-shot command and restart the proxy:
+
+```bash
+mag oauth
+sudo systemctl restart mag-proxy.service
+```
 
 `mag status` shows service state, recent logs, MYOB authorization, issued tokens, and recent proxy activity at a glance - see [deploy/README.md](deploy/README.md#day-to-day).
 
