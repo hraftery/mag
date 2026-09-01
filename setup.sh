@@ -42,6 +42,19 @@ ENV_FILE="$MAG_HOME/.env"
 
 echo "==> mag setup running from $MAG_HOME"
 
+# --- 0. preflight checks --------------------------------------------------
+# Fail clearly up front, if we can.
+missing=()
+for cmd in git python3 systemctl; do
+    command -v "$cmd" &>/dev/null || missing+=("$cmd")
+done
+if [[ ${#missing[@]} -gt 0 ]]; then
+    echo "ERROR: missing required command(s): ${missing[*]}" >&2
+    echo "       mag needs git (the deploy method), python3 (runs mag itself), and" >&2
+    echo "       systemd/systemctl (supervises mag-proxy) - see README.md#setup." >&2
+    exit 1
+fi
+
 # git reports "dubious ownership" for any user other than whoever pulled
 # the repo. We run git as root here, and later $MAG_HOME will be owned by
 # $MAG_USER. So tell git it's okay for group members to run git commands.
@@ -155,6 +168,15 @@ elif ! systemctl is-active --quiet nginx; then
     echo "==> nginx is installed but not running - skipping nginx site install." >&2
     echo "    start it (systemctl start nginx) and re-run, or configure your own" >&2
     echo "    web server manually using deploy/mag-proxy.conf as a template." >&2
+elif [[ ! -f "/etc/letsencrypt/live/$MAG_DOMAIN/fullchain.pem" || ! -f "/etc/letsencrypt/live/$MAG_DOMAIN/privkey.pem" ]]; then
+    # deploy/mag-proxy.conf hardcodes this same path - without this check,
+    # the failure a missing cert actually causes is nginx -t rejecting the
+    # config over a certificate path that doesn't exist, several steps
+    # further into this script and less clearly tied to the actual cause.
+    echo "==> no TLS cert found for $MAG_DOMAIN - skipping nginx site install." >&2
+    echo "    get one first (see README.md, Setup step 2):" >&2
+    echo "        sudo certbot certonly --nginx -d $MAG_DOMAIN" >&2
+    echo "    then re-run this script." >&2
 else
     echo "==> installing nginx site for $MAG_DOMAIN"
     sed "s|__MAG_DOMAIN__|$MAG_DOMAIN|g" "$MAG_HOME/deploy/mag-proxy.conf" > /etc/nginx/sites-available/mag-proxy.conf
