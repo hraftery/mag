@@ -6,9 +6,9 @@ After=network.target
 Type=simple
 User=mag
 Group=mag
-WorkingDirectory=/opt/mag
-EnvironmentFile=/etc/mag/env
-ExecStart=/usr/bin/python3 /opt/mag/app/proxy_server.py
+WorkingDirectory=__MAG_HOME__
+EnvironmentFile=__MAG_HOME__/.env
+ExecStart=/usr/bin/python3 __MAG_HOME__/app/proxy_server.py
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=60
@@ -25,7 +25,7 @@ PrivateTmp=true
 # repo root. Scoped to the whole checkout rather than enumerating the three
 # files individually, since ReadWritePaths on a not-yet-existing file is
 # fragile - simpler and more robust across first-run ordering.
-ReadWritePaths=/opt/mag
+ReadWritePaths=__MAG_HOME__
 
 [Install]
 WantedBy=multi-user.target

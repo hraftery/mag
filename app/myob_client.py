@@ -37,20 +37,18 @@ API_VERSION = "v2"
 TIMEOUT = 6
 
 
-def load_tokens() -> dict:
+def load_myob_tokens() -> dict:
     if not os.path.exists(TOKENS_FILE):
         raise SystemExit(f"{TOKENS_FILE} not found — run scripts/oauth_callback.py first.")
     with open(TOKENS_FILE) as f:
         return json.load(f)
 
-
-def save_tokens(tokens: dict) -> None:
+def save_myob_tokens(tokens: dict) -> None:
     with open(TOKENS_FILE, "w") as f:
         json.dump(tokens, f, indent=2)
-    os.chmod(TOKENS_FILE, 0o600)
+    os.chmod(TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
 
-
-def refresh_tokens(tokens: dict, client_id: str, client_secret: str) -> dict:
+def refresh_myob_tokens(tokens: dict, client_id: str, client_secret: str) -> dict:
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json"
@@ -75,9 +73,8 @@ def refresh_tokens(tokens: dict, client_id: str, client_secret: str) -> dict:
     # The refresh response doesn't repeat businessId/businessName - carry them over.
     new_tokens["businessId"] = tokens.get("businessId")
     new_tokens["businessName"] = tokens.get("businessName")
-    save_tokens(new_tokens)
+    save_myob_tokens(new_tokens)
     return new_tokens
-
 
 def _request_headers(access_token: str, client_id: str) -> dict:
     headers = {
@@ -86,15 +83,14 @@ def _request_headers(access_token: str, client_id: str) -> dict:
         "x-myobapi-version": API_VERSION,
         "Accept": "application/json",
     }
-
+    
     cf_username = os.environ.get("MYOB_CF_USERNAME")
     cf_password = os.environ.get("MYOB_CF_PASSWORD")
     if cf_username and cf_password:
         creds = f"{cf_username}:{cf_password}".encode()
         headers["x-myobapi-cftoken"] = base64.b64encode(creds).decode()
-
+    
     return headers
-
 
 def api_get(path: str, params: dict | None = None) -> dict:
     """GET an AccountRight API path (e.g. "/Sale/Invoice") for the business
@@ -104,7 +100,7 @@ def api_get(path: str, params: dict | None = None) -> dict:
     if not client_id or not client_secret:
         raise SystemExit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
     
-    tokens = load_tokens()
+    tokens = load_myob_tokens()
     business_id = tokens.get("businessId")
     if not business_id:
         raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run scripts/oauth_callback.py.")
@@ -116,7 +112,7 @@ def api_get(path: str, params: dict | None = None) -> dict:
     def do_request(access_token: str):
         request = Request(url, headers=_request_headers(access_token, client_id))
         return urlopen(request, timeout=TIMEOUT)
-
+    
     try:
         with do_request(tokens["access_token"]) as response:
             return json.loads(response.read().decode())
@@ -127,7 +123,7 @@ def api_get(path: str, params: dict | None = None) -> dict:
         raise SystemExit(f"API request to {path} failed: could not reach {url} ({e.reason})")
     
     # Access token expired (401) — refresh once and retry.
-    tokens = refresh_tokens(tokens, client_id, client_secret)
+    tokens = refresh_myob_tokens(tokens, client_id, client_secret)
     try:
         with do_request(tokens["access_token"]) as response:
             return json.loads(response.read().decode())
@@ -162,16 +158,16 @@ def raw_request(
     client_secret = os.environ.get("MYOB_CLIENT_SECRET")
     if not client_id or not client_secret:
         raise SystemExit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
-
-    tokens = load_tokens()
+    
+    tokens = load_myob_tokens()
     business_id = tokens.get("businessId")
     if not business_id:
         raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run scripts/oauth_callback.py.")
-
+    
     url = f"{API_BASE}/{business_id}{path}"
     if params:
         url += "?" + urlencode(params)
-
+    
     def attempt(access_token: str) -> tuple[int, str | None, bytes]:
         headers = _request_headers(access_token, client_id)
         if body is not None:
@@ -184,10 +180,10 @@ def raw_request(
             return e.code, e.headers.get("Content-Type"), e.read()
         except URLError as e:
             raise UpstreamUnreachable(str(e.reason))
-
+    
     status, ctype, data = attempt(tokens["access_token"])
     if status == 401:
-        tokens = refresh_tokens(tokens, client_id, client_secret)
+        tokens = refresh_myob_tokens(tokens, client_id, client_secret)
         status, ctype, data = attempt(tokens["access_token"])
     return status, ctype, data
 

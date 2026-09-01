@@ -41,7 +41,7 @@ def load_records() -> list[dict]:
 def save_records(records: list[dict]) -> None:
     with open(TOKENS_FILE, "w") as f:
         json.dump(records, f, indent=2)
-    os.chmod(TOKENS_FILE, 0o600)
+    os.chmod(TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
 
 
 def parse_scope(spec: str) -> dict:

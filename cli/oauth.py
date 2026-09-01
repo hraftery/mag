@@ -3,7 +3,7 @@
 This helper starts a listener on 127.0.0.1:8787, which is where nginx
 proxies the redirect. It then prints the MYOB consent URL, which must be
 opened LOCALLY in a browser. Once consent is granted, the redirect will
-hit nginx via: https://mag.example.com/callback
+hit nginx via: https://<MAG_DOMAIN>/callback
 
 It then exchanges the returned authorization code for an access + refresh
 token, and saves them to tokens.json.
@@ -16,7 +16,7 @@ MYOB's OAuth2.0 Authentication Guide:
 https://apisupport.myob.com/hc/en-us/articles/13065472856719
 
 Not runnable on its own - invoked via mag.py's "oauth" command:
-    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy mag.py oauth
+    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy MAG_DOMAIN=zzz mag.py oauth
 """
 
 import json
@@ -29,7 +29,9 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REDIRECT_URI = "https://mag.example.com/callback"
+sys.path.insert(0, os.path.join(ROOT_DIR, "app"))
+import myob_client
+
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = 8787
 
@@ -43,13 +45,11 @@ TOKEN_ENDPOINT = "https://secure.myob.com/oauth2/v1/authorize"
 # adding any new scope here.
 SCOPE = "sme-company-file sme-contacts-customer sme-contacts-supplier sme-sales sme-banking"
 
-TOKENS_FILE = os.path.join(ROOT_DIR, "tokens.json")
 
-
-def build_auth_url(client_id: str, state: str) -> str:
+def build_auth_url(client_id: str, state: str, redirect_uri: str) -> str:
     params = {
         "client_id": client_id,
-        "redirect_uri": REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "response_type": "code",
         "scope": SCOPE,
         "state": state,
@@ -59,8 +59,7 @@ def build_auth_url(client_id: str, state: str) -> str:
     }
     return f"{AUTH_ENDPOINT}?{urlencode(params)}"
 
-
-def exchange_code(client_id: str, client_secret: str, code: str) -> dict:
+def exchange_code(client_id: str, client_secret: str, code: str, redirect_uri: str) -> dict:
     headers={
         "Content-Type": "application/x-www-form-urlencoded",
         "Accept": "application/json",
@@ -70,7 +69,7 @@ def exchange_code(client_id: str, client_secret: str, code: str) -> dict:
             "client_id": client_id,
             "client_secret": client_secret,
             "code": code,
-            "redirect_uri": REDIRECT_URI,
+            "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         }
     ).encode()
@@ -84,8 +83,7 @@ def exchange_code(client_id: str, client_secret: str, code: str) -> dict:
     except URLError as e:
         raise SystemExit(f"Token exchange failed: could not reach {TOKEN_ENDPOINT} ({e.reason})")
 
-
-def make_handler(expected_state: str, client_id: str, client_secret: str, result: dict):
+def make_handler(expected_state: str, client_id: str, client_secret: str, redirect_uri: str, result: dict):
     class CallbackHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             parsed = urlparse(self.path)
@@ -121,7 +119,7 @@ def make_handler(expected_state: str, client_id: str, client_secret: str, result
                 result["error"] = "missing_code"
                 return
             
-            tokens = exchange_code(client_id, client_secret, code)
+            tokens = exchange_code(client_id, client_secret, code, redirect_uri)
             # Capture businessId/businessName from the redirect. See prompt=consent.
             tokens["businessId"] = query.get("businessId", [None])[0]
             tokens["businessName"] = query.get("businessName", [None])[0]
@@ -139,20 +137,23 @@ def make_handler(expected_state: str, client_id: str, client_secret: str, result
     
     return CallbackHandler
 
-
 def main():
     client_id = os.environ.get("MYOB_CLIENT_ID")
     client_secret = os.environ.get("MYOB_CLIENT_SECRET")
+    domain = os.environ.get("MAG_DOMAIN")
     if not client_id or not client_secret:
         sys.exit("MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables must be set.")
-    
+    if not domain:
+        sys.exit("MAG_DOMAIN environment variable must be set (the domain MYOB redirects back to).")
+    redirect_uri = f"https://{domain}/callback"
+
     state = secrets.token_urlsafe(16)
-    auth_url = build_auth_url(client_id, state)
-    
+    auth_url = build_auth_url(client_id, state, redirect_uri)
+
     # Bind the listener before inviting anyone to click the URL, so it's
     # ready to catch the redirect the moment MYOB sends it.
     result: dict = {}
-    handler_cls = make_handler(state, client_id, client_secret, result)
+    handler_cls = make_handler(state, client_id, client_secret, redirect_uri, result)
     server = HTTPServer((LISTEN_HOST, LISTEN_PORT), handler_cls)
     
     print(f"This script listens on {LISTEN_HOST}:{LISTEN_PORT}, so it must run on the same")
@@ -171,12 +172,9 @@ def main():
     if "error" in result:
         sys.exit(f"Authorization failed: {result['error']}")
     
-    with open(TOKENS_FILE, "w") as f:
-        json.dump(result["tokens"], f, indent=2)
-    os.chmod(TOKENS_FILE, 0o600)
-    
-    print(f"Saved tokens to {TOKENS_FILE}")
+    myob_client.save_myob_tokens(result["tokens"])
 
+    print(f"Saved tokens to {myob_client.TOKENS_FILE}")
 
 if __name__ == "__main__":
     sys.exit("Run this via: mag.py oauth")

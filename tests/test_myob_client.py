@@ -51,23 +51,23 @@ def write_tokens(**overrides):
         "businessName": "Test Biz",
     }
     tokens.update(overrides)
-    myob_client.save_tokens(tokens)
+    myob_client.save_myob_tokens(tokens)
     return tokens
 
 
 class TestLoadSaveTokens:
     def test_load_missing_file_exits(self, tokens_file):
         with pytest.raises(SystemExit):
-            myob_client.load_tokens()
+            myob_client.load_myob_tokens()
 
     def test_save_then_load_roundtrip(self, tokens_file):
-        myob_client.save_tokens({"access_token": "AT"})
-        assert myob_client.load_tokens() == {"access_token": "AT"}
+        myob_client.save_myob_tokens({"access_token": "AT"})
+        assert myob_client.load_myob_tokens() == {"access_token": "AT"}
 
-    def test_save_sets_owner_only_permissions(self, tokens_file):
-        myob_client.save_tokens({"access_token": "AT"})
+    def test_save_sets_owner_and_group_permissions(self, tokens_file):
+        myob_client.save_myob_tokens({"access_token": "AT"})
         mode = os.stat(tokens_file).st_mode & 0o777
-        assert mode == 0o600
+        assert mode == 0o660
 
 
 class TestRefreshTokens:
@@ -78,13 +78,13 @@ class TestRefreshTokens:
         )
         old = write_tokens()
 
-        new = myob_client.refresh_tokens(old, "cid", "csecret")
+        new = myob_client.refresh_myob_tokens(old, "cid", "csecret")
 
         assert new["access_token"] == "AT2"
         assert new["businessId"] == "biz-1"
         assert new["businessName"] == "Test Biz"
         # And it was persisted.
-        assert myob_client.load_tokens()["access_token"] == "AT2"
+        assert myob_client.load_myob_tokens()["access_token"] == "AT2"
         mock_urlopen.assert_called_once()
 
     def test_sends_refresh_token_grant(self, mocker, tokens_file, myob_env):
@@ -93,7 +93,7 @@ class TestRefreshTokens:
         )
         write_tokens(refresh_token="RT-old")
 
-        myob_client.refresh_tokens({"refresh_token": "RT-old"}, "cid", "csecret")
+        myob_client.refresh_myob_tokens({"refresh_token": "RT-old"}, "cid", "csecret")
 
         sent_request = mock_urlopen.call_args[0][0]
         sent_body = sent_request.data.decode()
@@ -103,12 +103,12 @@ class TestRefreshTokens:
     def test_http_error_exits(self, mocker, tokens_file, myob_env):
         mocker.patch("myob_client.urlopen", side_effect=http_error(401, b"bad"))
         with pytest.raises(SystemExit):
-            myob_client.refresh_tokens({"refresh_token": "x"}, "cid", "csecret")
+            myob_client.refresh_myob_tokens({"refresh_token": "x"}, "cid", "csecret")
 
     def test_url_error_exits(self, mocker, tokens_file, myob_env):
         mocker.patch("myob_client.urlopen", side_effect=URLError("no route"))
         with pytest.raises(SystemExit):
-            myob_client.refresh_tokens({"refresh_token": "x"}, "cid", "csecret")
+            myob_client.refresh_myob_tokens({"refresh_token": "x"}, "cid", "csecret")
 
 
 class TestRequestHeaders:
@@ -162,7 +162,7 @@ class TestApiGet:
 
         assert result == {"Items": []}
         assert mock_urlopen.call_count == 3
-        assert myob_client.load_tokens()["access_token"] == "AT2"
+        assert myob_client.load_myob_tokens()["access_token"] == "AT2"
 
     def test_non_401_http_error_exits(self, mocker, tokens_file, myob_env):
         write_tokens()

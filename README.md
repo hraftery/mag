@@ -22,9 +22,12 @@ An automation tool for [MYOB](https://www.myob.com/). Provides scripting and str
   (`list_invoices.py`, `spend_money_by_supplier.py`).
 - [`tests/`](tests/) — unit and integration tests for `app/` and `cli/`. See
   [Testing](#testing).
-- [`deploy/`](deploy/) — systemd unit templates and the install runbook for
-  running `app/proxy_server.py` / `cli/oauth.py` as services rather than
-  manual foreground processes. See [Setup](#setup).
+- [`setup.sh`](setup.sh) — installs/updates mag on the server (nginx site,
+  `mag-proxy` systemd unit, global `mag` CLI wrapper). [`deploy/`](deploy/)
+  holds the templates it uses. See [Setup](#setup).
+- [`.env.example`](.env.example) — template for `.env` (gitignored), the
+  one place a deployment's MYOB credentials and domain are configured.
+  `setup.sh` creates/completes it interactively; see [Setup](#setup).
 
 ## Architecture
 
@@ -93,89 +96,81 @@ Register an app in the MYOB Developer Centre to get a `MYOB_CLIENT_ID` /
 `MYOB_CLIENT_SECRET` pair — see MYOB's
 [OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719)
 — with these scopes enabled: `sme-company-file`, `sme-contacts-customer`,
-`sme-contacts-supplier`, `sme-sales`, `sme-banking`. Every command below
-reads these two values from the environment; nothing is stored in the repo.
+`sme-contacts-supplier`, `sme-sales`, `sme-banking`. These end up in
+`.env` (step 3) — nothing is stored in the repo.
 
-### 2. Set up the OAuth redirect server
+### 2. Point a subdomain at this server and get a TLS cert
 
 MYOB's OAuth2 flow requires a registered HTTPS redirect URI. We use
 `https://mag.example.com/callback`, served by nginx on the existing
-DigitalOcean server.
+DigitalOcean server — everything below assumes that server, and the nginx
+already running on it for other things.
 
-The subdomain is added in ICDsoft (though I'm not sure this is necessary). Ccertificate requested with `certbot`. `certonly` obtains the cert but leaves the nginx
-conf untouched. `--nginx` uses nginx to automatically provide the verification
-server.
+Subdomain added in ICDsoft (though it's not obviously necessary — nginx
+will happily terminate TLS for any hostname pointed at the box). Certificate
+requested with `certbot`; `certonly` obtains the cert but leaves the nginx
+conf untouched, `--nginx` uses nginx itself to serve the verification
+challenge:
 
 ```bash
 sudo certbot certonly --nginx -d mag.example.com
 ```
 
-Then a dedicated `sites-available` nginx config can be added.
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name mag.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/mag.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/mag.example.com/privkey.pem;
-
-    location /callback {
-        proxy_pass http://127.0.0.1:8787;
-    }
-}
-```
-
-### 3. Authorize mag with MYOB
-
-[`cli/oauth.py`](cli/oauth.py) is a one-shot script that listens for the
-redirect above, exchanges the authorization code for tokens, and saves them to
-`tokens.json`. Because the listener has to be reachable at the same
-address nginx proxies to, **run it on the server itself** (e.g. over SSH):
+### 3. Install mag
 
 ```bash
-# on the server
-MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... cli/mag.py oauth
+git clone <this-repo-url> /opt/mag   # or wherever - setup.sh doesn't assume a path
+cd /opt/mag
+sudo ./setup.sh
+```
+
+[`setup.sh`](setup.sh) is the entire install *and* update mechanism —
+re-run it after a `git pull` to redeploy. It creates a dedicated `mag`
+system user, installs the nginx site (`location /callback` and
+`location /proxy/`, alongside anything else already on this nginx), the
+`mag-proxy` systemd unit (restart-on-crash, start-on-boot — see
+[deploy/README.md](deploy/README.md) for why systemd), and a global `mag`
+CLI wrapper.
+
+It also prompts, right there in the terminal, for anything missing from
+`.env` (a gitignored file at the repo root — see
+[`.env.example`](.env.example)): your MYOB credentials from step 1, and
+the domain this server is reachable at. `.env` is the one place a fresh
+install is configured — no separate secrets directory, no editing
+templates by hand — and it's loaded by both the systemd unit and the
+`mag` CLI wrapper, so every subsequent `mag` command already has these
+values available too.
+
+It also adds you to the `mag` group, so plain `mag`/`git` commands work
+without `sudo -u mag` — see [deploy/README.md](deploy/README.md) for why
+that's safe here. That only takes effect in a new session, though — start
+a fresh login (or run `newgrp mag`) before step 4 below.
+
+### 4. Authorize mag with MYOB
+
+`mag oauth` is a one-shot command that listens for the redirect
+registered above, exchanges the authorization code for tokens, and saves
+them to `tokens.json`. Run it on the server, once, now that `.env` is
+populated:
+
+```bash
+mag oauth
 ```
 
 It prints the MYOB consent URL. Open that in a browser on your own
 machine and approve access there. Your browser's redirect hits nginx on
-the server, which proxies it to the listener, completing the exchange.
-Run it once to seed a refresh token — everyday automation reads from
-`tokens.json` without needing the redirect server again.
+the server, which proxies it to `mag oauth`'s listener, completing the
+exchange. Run it once to seed a refresh token — everyday automation reads
+from `tokens.json` without needing this step again (until a refresh token
+is revoked or expires, in which case: run it again).
 
-The command above runs it as a manual foreground process, fine for this
-first run. [`deploy/`](deploy/) has a systemd unit for it too, invoked by
-hand only when (re-)authorizing rather than left running — see
-[deploy/README.md](deploy/README.md).
-
-### 4. Run the proxy server
-
-Unlike the rest of the scripts in this repo, the proxy (`app/proxy_server.py`) is a persistent service. It binds to `127.0.0.1:8788` only:
-
-```bash
-# on the server
-MYOB_CLIENT_ID=... MYOB_CLIENT_SECRET=... app/proxy_server.py
-```
-
-nginx location, alongside the existing `/callback`:
-
-```nginx
-location /proxy/ {
-    proxy_pass http://127.0.0.1:8788;
-}
-```
-
-A client then calls e.g. `GET https://mag.example.com/proxy/Sale/Invoice`
-with `Authorization: Bearer <issued token>` and gets MYOB's response back
+Then restart the proxy so it picks up the new `tokens.json`:
+`sudo systemctl restart mag-proxy.service`. A client can then call e.g.
+`GET https://mag.example.com/proxy/Sale/Invoice` with
+`Authorization: Bearer <issued token>` and get MYOB's response back
 unmodified — see [Usage](#usage) below for issuing that token. Every
 proxied request — success or reject — is appended to `proxy_audit.log`
 (`timestamp token-name method path -> status`).
-
-Running it as above (a manual foreground process) works, but won't
-restart on crash or survive a reboot. For that, run it under systemd
-instead — unit file and install steps in
-[deploy/README.md](deploy/README.md).
 
 ## Usage
 

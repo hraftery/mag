@@ -90,10 +90,10 @@ class TestIssueFindRevokeEditRoundtrip:
         with pytest.raises(ValueError):
             token_store.add_scope(record["id"], "no-colon-here")
 
-    def test_saved_file_permissions_owner_only(self):
+    def test_saved_file_permissions_owner_and_group(self):
         token_store.issue("a", ["Contact:GET"])
         mode = os.stat(token_store.TOKENS_FILE).st_mode & 0o777
-        assert mode == 0o600
+        assert mode == 0o660
 
 
 class TestPathMatches:
