@@ -1,6 +1,8 @@
 [Unit]
 Description=mag proxy - issued-token to MYOB OAuth bridge (see mag/proxy/proxy.py)
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -11,11 +13,10 @@ EnvironmentFile=__MAG_HOME__/.env
 # Allows `from mag.lib import ...` to resolve without an install step.
 # The mag wrapper (see setup.sh) does the same for `mag` commands.
 Environment=PYTHONPATH=__MAG_HOME__
+UMask=0007
 ExecStart=/usr/bin/python3 __MAG_HOME__/mag/proxy/proxy.py
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=5
 
 # Hardening. Binds to 127.0.0.1 only (see mag/proxy/proxy.py) - nginx is the
 # sole internet-facing front door, proxying /proxy/ to this port.

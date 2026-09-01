@@ -49,7 +49,14 @@ def save_myob_tokens(tokens: dict) -> None:
     os.makedirs(os.path.dirname(MYOB_TOKENS_FILE), exist_ok=True)
     with open(MYOB_TOKENS_FILE, "w") as f:
         json.dump(tokens, f, indent=2)
-    os.chmod(MYOB_TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
+    try:
+        # chmod requires *owning* the file, not just group membership. Since this file
+        # is written by `mag oauth` *and* by mag-proxy.service we may end up with a
+        # different owner. So we rely on umask instead (see setup.sh's mag wrapper
+        # and mag-proxy.service) and this is just a backup that may fail.
+        os.chmod(MYOB_TOKENS_FILE, 0o660)
+    except PermissionError:
+        pass
 
 def refresh_myob_tokens(tokens: dict, client_id: str, client_secret: str) -> dict:
     headers = {
@@ -109,44 +116,57 @@ def raw_request(
 ) -> tuple[int, str | None, bytes]:
     """Forward an arbitrary request to the AccountRight API for the business
     file in tokens.json, refreshing the access token once on a 401.
-    
+
     Unlike api_get(), MYOB's own error responses are returned rather than
     raised, so a caller (the proxy server) can relay them verbatim - it's
     not this function's job to decide what's a "failure" for the caller.
     Only a genuinely unreachable upstream raises (UpstreamUnreachable).
+
+    That includes local not-ready-yet conditions (no MYOB_CLIENT_ID/SECRET,
+    no tokens.json yet, one missing businessId, or MYOB itself rejecting a
+    refresh) even though the helpers below raise SystemExit for them - fine
+    for api_get()'s one-shot script callers (SystemExit there is the whole
+    point), but SystemExit raised inside the proxy's per-connection worker
+    thread is silently swallowed by Python itself: a non-main thread's
+    uncaught SystemExit prints no traceback and reaches no log, the client
+    just sees the connection die with zero explanation anywhere. Caught
+    here and turned into a real, loggable response instead.
     """
-    client_id = os.environ.get("MYOB_CLIENT_ID")
-    client_secret = os.environ.get("MYOB_CLIENT_SECRET")
-    if not client_id or not client_secret:
-        raise SystemExit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
-    
-    tokens = load_myob_tokens()
-    business_id = tokens.get("businessId")
-    if not business_id:
-        raise SystemExit(f"{MYOB_TOKENS_FILE} has no businessId — re-run `mag oauth`.")
-    
-    url = f"{API_BASE}/{business_id}{path}"
-    if params:
-        url += "?" + urlencode(params)
-    
-    def attempt(access_token: str) -> tuple[int, str | None, bytes]:
-        headers = _request_headers(access_token, client_id)
-        if body is not None:
-            headers["Content-Type"] = content_type or "application/json"
-        request = Request(url, data=body, method=method, headers=headers)
-        try:
-            with urlopen(request, timeout=TIMEOUT) as response:
-                return response.status, response.headers.get("Content-Type"), response.read()
-        except HTTPError as e:
-            return e.code, e.headers.get("Content-Type"), e.read()
-        except URLError as e:
-            raise UpstreamUnreachable(str(e.reason))
-    
-    status, ctype, data = attempt(tokens["access_token"])
-    if status == 401:
-        tokens = refresh_myob_tokens(tokens, client_id, client_secret)
+    try:
+        client_id = os.environ.get("MYOB_CLIENT_ID")
+        client_secret = os.environ.get("MYOB_CLIENT_SECRET")
+        if not client_id or not client_secret:
+            raise SystemExit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
+
+        tokens = load_myob_tokens()
+        business_id = tokens.get("businessId")
+        if not business_id:
+            raise SystemExit(f"{MYOB_TOKENS_FILE} has no businessId — re-run `mag oauth`.")
+
+        url = f"{API_BASE}/{business_id}{path}"
+        if params:
+            url += "?" + urlencode(params)
+
+        def attempt(access_token: str) -> tuple[int, str | None, bytes]:
+            headers = _request_headers(access_token, client_id)
+            if body is not None:
+                headers["Content-Type"] = content_type or "application/json"
+            request = Request(url, data=body, method=method, headers=headers)
+            try:
+                with urlopen(request, timeout=TIMEOUT) as response:
+                    return response.status, response.headers.get("Content-Type"), response.read()
+            except HTTPError as e:
+                return e.code, e.headers.get("Content-Type"), e.read()
+            except URLError as e:
+                raise UpstreamUnreachable(str(e.reason))
+
         status, ctype, data = attempt(tokens["access_token"])
-    return status, ctype, data
+        if status == 401:
+            tokens = refresh_myob_tokens(tokens, client_id, client_secret)
+            status, ctype, data = attempt(tokens["access_token"])
+        return status, ctype, data
+    except SystemExit as e:
+        return 503, "application/json", json.dumps({"error": str(e)}).encode()
 
 def api_get(path: str, params: dict | None = None) -> dict:
     """GET an AccountRight API path (e.g. "/Sale/Invoice") for the business

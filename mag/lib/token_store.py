@@ -43,7 +43,15 @@ def save_records(records: list[dict]) -> None:
     os.makedirs(os.path.dirname(MAG_TOKENS_FILE), exist_ok=True)
     with open(MAG_TOKENS_FILE, "w") as f:
         json.dump(records, f, indent=2)
-    os.chmod(MAG_TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
+    try:
+        # chmod requires *owning* the file, not just group membership. Since
+        # this file is written by `mag issue/edit/revoke` *and* by
+        # mag-proxy.service we may end up with a different owner. So we rely
+        # on umask instead (see setup.sh's mag wrapper and mag-proxy.service)
+        # and this is just a backup that may fail.
+        os.chmod(MAG_TOKENS_FILE, 0o660)
+    except PermissionError:
+        pass
 
 
 def parse_scope(spec: str) -> dict:

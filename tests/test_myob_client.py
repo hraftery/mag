@@ -232,6 +232,41 @@ class TestRawRequest:
         assert sent_request.data == b'{"x":1}'
         assert sent_request.get_header("Content-type") == "application/json"
 
+    # "Not ready yet" states (no MYOB_CLIENT_ID/SECRET, no tokens.json yet,
+    # one missing businessId) raise SystemExit deep in the call chain
+    # (load_myob_tokens() etc.) - correct for api_get()'s script callers,
+    # but fatal if left to escape raw_request() itself: SystemExit inside
+    # the proxy's per-connection worker thread is silently swallowed by
+    # Python (a non-main thread's uncaught SystemExit logs nothing at all -
+    # found by actually running the proxy against a fresh install with no
+    # tokens.json yet, not by reading the code), so raw_request() must
+    # convert it to a real response, never let it escape.
+    def test_missing_tokens_file_returns_503_not_systemexit(self, tokens_file, myob_env):
+        # tokens_file fixture only points MYOB_TOKENS_FILE at a scratch path -
+        # doesn't create it, so this is the fresh-install-before-mag-oauth state.
+        status, ctype, data = myob_client.raw_request("GET", "/Sale/Invoice")
+
+        assert status == 503
+        assert ctype == "application/json"
+        assert "mag oauth" in json.loads(data)["error"]
+
+    def test_missing_env_vars_returns_503_not_systemexit(self, tokens_file, monkeypatch):
+        monkeypatch.delenv("MYOB_CLIENT_ID", raising=False)
+        monkeypatch.delenv("MYOB_CLIENT_SECRET", raising=False)
+
+        status, ctype, data = myob_client.raw_request("GET", "/Sale/Invoice")
+
+        assert status == 503
+        assert "MYOB_CLIENT_ID" in json.loads(data)["error"]
+
+    def test_missing_business_id_returns_503_not_systemexit(self, tokens_file, myob_env):
+        write_tokens(businessId=None)
+
+        status, ctype, data = myob_client.raw_request("GET", "/Sale/Invoice")
+
+        assert status == 503
+        assert "businessId" in json.loads(data)["error"]
+
 
 class TestApiGetAll:
     def test_pages_until_short_page(self, mocker):

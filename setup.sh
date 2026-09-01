@@ -64,17 +64,34 @@ mkdir -p "$MAG_HOME/var"
 # requirement for CLI operations.
 chown -R "$MAG_USER:$MAG_GROUP" "$MAG_HOME"
 chmod -R g+rwX "$MAG_HOME"
-# Both the checkout root and var/ specifically: g+s on a directory only
-# applies to things created within it *after* the bit is set, so var/ needs
-# its own copy - g+s on $MAG_HOME alone wouldn't reach files mag-proxy.service
-# creates inside var/ later (tokens.json etc. on first run).
+# Both the root and var/ specifically get g+s. Applies to things created
+# within *after* the bit is set, so var/ needs its own.
 chmod g+s "$MAG_HOME" "$MAG_HOME/var"
-git -C "$MAG_HOME" config core.sharedRepository group   # so `git pull` as a group member works too
+# Now MAG_HOME is owned by MAG_USER, git will spit "dubious ownership" for
+# any other user. Tell it it's okay for group members to run git here.
+git config --system --add safe.directory "$MAG_HOME"
+# So `git pull` as a group member works too
+git -C "$MAG_HOME" config core.sharedRepository group
 
-if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]] && ! id -nG "$SUDO_USER" | grep -qw "$MAG_GROUP"; then
-    echo "==> adding $SUDO_USER to the $MAG_GROUP group"
-    usermod -aG "$MAG_GROUP" "$SUDO_USER"
-    echo "    (log out and back in, or run 'newgrp $MAG_GROUP', for this to take effect)"
+if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]]; then
+    # Add user to mag group to save doing `sudo -u mag` all the time.
+    candidate_groups=("$MAG_GROUP")
+    # Also allow `journalctl -u mag-proxy` (and `mag status`) without sudo.
+    # Skipped if the group doesn't exist (some minimal systemd installs).
+    if getent group systemd-journal &>/dev/null; then
+        candidate_groups+=("systemd-journal")
+    fi
+    # Checked existing groups to avoid missing some because "already set up".
+    missing_groups=()
+    for g in "${candidate_groups[@]}"; do
+        id -nG "$SUDO_USER" | grep -qw "$g" || missing_groups+=("$g")
+    done
+    # Finally, apply the missing groups.
+    if [[ ${#missing_groups[@]} -gt 0 ]]; then
+        echo "==> adding $SUDO_USER to: ${missing_groups[*]}"
+        usermod -aG "$(IFS=,; echo "${missing_groups[*]}")" "$SUDO_USER"
+        echo "    (log out and back in, or run 'newgrp $MAG_GROUP', for this to take effect)"
+    fi
 fi
 
 # --- 2. per-deployment configuration (.env) ------------------------------
@@ -152,10 +169,26 @@ systemctl restart mag-proxy.service   # restart (not start) so a redeploy picks 
 echo "==> installing /usr/local/bin/mag"
 cat > /usr/local/bin/mag <<EOF
 #!/usr/bin/env bash
+if [ -f "$MAG_HOME/.env" ] && [ ! -r "$MAG_HOME/.env" ]; then
+    # .env is 660, owned by $MAG_USER:$MAG_GROUP - readable by a group
+    # member, but group membership added by setup.sh doesn't apply to an
+    # already-open session. Fail with a clear pointer here rather than a
+    # bare "Permission denied" plus a Python traceback further down.
+    echo "Can't read $MAG_HOME/.env - if you just ran setup.sh, start a new" >&2
+    echo "session (or run 'newgrp $MAG_GROUP') to pick up your new group membership." >&2
+    exit 1
+fi
 set -a
 [ -f "$MAG_HOME/.env" ] && source "$MAG_HOME/.env"
 set +a
 export PYTHONPATH="$MAG_HOME\${PYTHONPATH:+:\$PYTHONPATH}"
+# So new files this creates (tokens.json, mag_tokens.json) come out
+# group-writable (660) from the start, regardless of who runs it.
+# See mag/lib/token_store.py and mag/lib/myob_client.py's save functions
+# for why this matters more than it looks: those files are written
+# alternately by a human and by the service, and only the file's *owner*
+# can chmod it after the fact.
+umask 007
 exec python3 -m mag.cli "\$@"
 EOF
 chmod 755 /usr/local/bin/mag
