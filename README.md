@@ -92,19 +92,21 @@ sudo ./setup.sh
 
 ## Usage
 
+### Issuing tokens
+
 After completing [Setup](#setup), issue a client token with:
 
 ```bash
-mag issue --name "explore" \
+# prints the raw token only once, so be sure to save it
+mag issue --name "MyToken" \
   --scope "Sale/Invoice:GET" --scope "Contact:GET"
-# prints the raw token once, so save it
-
-mag list                           # audit what exists
-mag edit <id> --add-scope "..."    # widen, same secret
-mag revoke <id>                    # instant, no MYOB-side effect
 ```
 
-Note client tokens are issued without contact with the MYOB API. Indeed, even the `mag` proxy is not required.
+Multiple tokens with different scopes are supported and encouraged. Use a descriptive name to identify them, and see [the list of scopes](https://developer.myob.com/api/myob-business-api/api-overview/granular_data_scopes/) to figure out which ones you need.
+
+Note client tokens are issued without contact with the MYOB API nor the `mag` proxy.
+
+### Using a token
 
 A client can then call the gateway directly with that token:
 
@@ -114,16 +116,41 @@ curl -H "Authorization: Bearer <issued token>" https://<MAG_DOMAIN>/proxy/Sale/I
 
 `mag` forwards the request to MYOB and relays the response back unmodified - see [Architecture](#architecture). Every request is appended to `proxy_audit.log`.
 
-### Re-authorizing with MYOB
+### Editing tokens
 
-The one MYOB OAuth grant (from [Setup step 4](#4-authorize-mag-with-myob)) can expire or be revoked on MYOB's side independently of anything client tokens do - it's unrelated to any individual client token above and isn't fixed by reissuing one. If proxied requests start failing for that reason, re-run the same one-shot command and restart the proxy:
+Tokens can also be viewed and edited with:
+
+```bash
+mag list                           # audit what exists
+mag edit <id> --add-scope "..."    # widen, same secret
+mag revoke <id>                    # instant, no MYOB-side effect
+```
+
+### System status
+
+The `mag` service state, recent logs, MYOB authorisation, issued tokens, and recent proxy activity can all be viewed with:
+
+```bash
+mag status
+```
+
+This is a good first command when checking on a deployment.
+
+Alternatively, logs can be read directly:
+
+```bash
+journalctl -u mag-proxy.service # service lifecycle, stdout
+less $MAG_HOME/var/proxy_audit.log # every proxied request
+```
+
+### Re-authorising with MYOB
+
+The one MYOB OAuth grant (from [Setup step 4](#4-authorize-mag-with-myob)) can expire or be revoked on MYOB's side independently of anything client tokens do. The MYOB token is unrelated to any individual client token above. If proxied requests start failing for that reason, re-run the same one-shot command and restart the proxy:
 
 ```bash
 mag oauth
 sudo systemctl restart mag-proxy.service
 ```
-
-`mag status` shows service state, recent logs, MYOB authorization, issued tokens, and recent proxy activity at a glance - see [deploy/README.md](deploy/README.md#day-to-day).
 
 ## Testing
 
