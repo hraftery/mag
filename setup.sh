@@ -6,6 +6,12 @@
 #   git pull
 #   sudo ./setup.sh
 #
+# This directory must be a real `git clone`, not a copy of the source some
+# other way (a downloaded tarball/zip, an rsync) - git is what gives us
+# versioning and a rollback path (git checkout <sha> && sudo ./setup.sh),
+# and this script itself relies on git commands below, which would simply
+# fail on a non-git copy.
+#
 # Per-deployment config (MYOB credentials, this server's domain) lives in
 # .env at the repo root - gitignored, never committed. If it's missing or
 # incomplete, this script prompts for whatever's missing and writes it
@@ -27,8 +33,8 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 # Resolve to wherever this checkout actually lives, so the install isn't
-# tied to any particular path (e.g. /opt/mag) - "download latest source
-# [anywhere], run setup.sh" should just work.
+# tied to any particular path (e.g. /opt/mag) - `git clone` it anywhere,
+# then run setup.sh from there.
 MAG_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MAG_USER=mag
 MAG_GROUP=mag
