@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 
 from mag.lib.paths import DATA_DIR
 
-API_TOKENS_FILE = os.path.join(DATA_DIR, "api_tokens.json")
+MAG_TOKENS_FILE = os.path.join(DATA_DIR, "mag_tokens.json")
 
 TOKEN_PREFIX = "mbt_"  # grep-able marker, same idea as GitHub/Stripe token prefixes
 
@@ -32,18 +32,18 @@ def _hash(token: str) -> str:
 
 
 def load_records() -> list[dict]:
-    if not os.path.exists(API_TOKENS_FILE):
+    if not os.path.exists(MAG_TOKENS_FILE):
         return []
-    with open(API_TOKENS_FILE) as f:
+    with open(MAG_TOKENS_FILE) as f:
         return json.load(f)
 
 
 def save_records(records: list[dict]) -> None:
-    # dirname(API_TOKENS_FILE), not DATA_DIR, so tests can redirect API_TOKENS_FILE.
-    os.makedirs(os.path.dirname(API_TOKENS_FILE), exist_ok=True)
-    with open(API_TOKENS_FILE, "w") as f:
+    # dirname(MAG_TOKENS_FILE), not DATA_DIR, so tests can redirect MAG_TOKENS_FILE.
+    os.makedirs(os.path.dirname(MAG_TOKENS_FILE), exist_ok=True)
+    with open(MAG_TOKENS_FILE, "w") as f:
         json.dump(records, f, indent=2)
-    os.chmod(API_TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
+    os.chmod(MAG_TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
 
 
 def parse_scope(spec: str) -> dict:

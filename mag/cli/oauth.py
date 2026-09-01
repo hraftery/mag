@@ -172,7 +172,7 @@ def main():
     
     myob_client.save_myob_tokens(result["tokens"])
 
-    print(f"Saved tokens to {myob_client.TOKENS_FILE}")
+    print(f"Saved tokens to {myob_client.MYOB_TOKENS_FILE}")
 
 if __name__ == "__main__":
     sys.exit("Run this via: mag oauth (see setup.sh)")

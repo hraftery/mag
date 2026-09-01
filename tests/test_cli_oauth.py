@@ -82,9 +82,9 @@ STATE = "fixed-test-state"
 @pytest.fixture
 def oauth_server(tmp_path, monkeypatch):
     """Sets up mag/cli/oauth.py's real one-shot HTTPServer to run safely in
-    tests: myob_client.TOKENS_FILE redirected to a scratch file (oauth.py
+    tests: myob_client.MYOB_TOKENS_FILE redirected to a scratch file (oauth.py
     saves via myob_client.save_myob_tokens(), so that's the module whose
-    TOKENS_FILE actually governs where the write lands), a fixed known
+    MYOB_TOKENS_FILE actually governs where the write lands), a fixed known
     "state" so callback requests can be crafted without racing stdout, and
     MYOB_CLIENT_ID/SECRET set so main() doesn't refuse to start.
 
@@ -107,7 +107,7 @@ def oauth_server(tmp_path, monkeypatch):
         servers.append(server)
         return server
 
-    monkeypatch.setattr(myob_client, "TOKENS_FILE", str(tokens_path))
+    monkeypatch.setattr(myob_client, "MYOB_TOKENS_FILE", str(tokens_path))
     monkeypatch.setattr(oauth.secrets, "token_urlsafe", lambda *a, **k: STATE)
     monkeypatch.setenv("MYOB_CLIENT_ID", "cid")
     monkeypatch.setenv("MYOB_CLIENT_SECRET", "csecret")

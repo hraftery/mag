@@ -14,11 +14,11 @@ def tokens_files(tmp_path, monkeypatch):
     touch real credentials/logs. Returns (myob_tokens_path, api_tokens_path,
     audit_log_path) - none created by default; tests create what they need."""
     myob_tokens_path = tmp_path / "tokens.json"
-    api_tokens_path = tmp_path / "api_tokens.json"
+    api_tokens_path = tmp_path / "mag_tokens.json"
     audit_log_path = tmp_path / "proxy_audit.log"
     monkeypatch.setattr(status, "MYOB_TOKENS_FILE", str(myob_tokens_path))
     monkeypatch.setattr(status, "AUDIT_LOG", str(audit_log_path))
-    monkeypatch.setattr(token_store, "API_TOKENS_FILE", str(api_tokens_path))
+    monkeypatch.setattr(token_store, "MAG_TOKENS_FILE", str(api_tokens_path))
     return myob_tokens_path, api_tokens_path, audit_log_path
 
 

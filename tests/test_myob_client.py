@@ -33,7 +33,7 @@ def fake_response(body: bytes, content_type="application/json", status=200):
 @pytest.fixture
 def tokens_file(tmp_path, monkeypatch):
     path = tmp_path / "tokens.json"
-    monkeypatch.setattr(myob_client, "TOKENS_FILE", str(path))
+    monkeypatch.setattr(myob_client, "MYOB_TOKENS_FILE", str(path))
     return str(path)
 
 

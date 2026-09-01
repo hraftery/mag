@@ -32,7 +32,7 @@ between `/etc`, the repo, and ad hoc exports. See
 
 ## Why no `sudo -u mag`
 
-`tokens.json` / `api_tokens.json` / `.env` need to be readable and
+`tokens.json` / `mag_tokens.json` / `.env` need to be readable and
 writable both by the `mag-proxy` systemd unit (runs as the `mag` user)
 and by you, running `mag` commands by hand — otherwise every manual
 command needs `sudo -u mag` first to keep file ownership from drifting.

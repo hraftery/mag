@@ -1,7 +1,7 @@
 """Manage mag API tokens: issue, list, edit, revoke.
 
 Prints the raw token once at issuance - only its hash is stored
-(api_tokens.json), so a lost token can only be revoked and reissued, not
+(mag_tokens.json), so a lost token can only be revoked and reissued, not
 recovered.
 
 Not runnable on its own - invoked via mag's issue/list/edit/revoke

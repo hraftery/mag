@@ -18,8 +18,8 @@ def run(mocker, capsys, *argv):
 
 @pytest.fixture
 def tokens_file(tmp_path, monkeypatch):
-    path = tmp_path / "api_tokens.json"
-    monkeypatch.setattr(token_store, "API_TOKENS_FILE", str(path))
+    path = tmp_path / "mag_tokens.json"
+    monkeypatch.setattr(token_store, "MAG_TOKENS_FILE", str(path))
     return str(path)
 
 

@@ -44,7 +44,7 @@ echo "==> mag setup running from $MAG_HOME"
 
 # --- 1. system user -----------------------------------------------------
 # The systemd unit runs as this user; it also needs to own the checkout
-# (tokens.json / api_tokens.json / proxy_audit.log live under var/; .env
+# (tokens.json / mag_tokens.json / proxy_audit.log live under var/; .env
 # lives at the repo root).
 if ! id -u "$MAG_USER" &>/dev/null; then
     echo "==> creating system user $MAG_USER"

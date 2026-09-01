@@ -12,7 +12,7 @@ import subprocess
 import sys
 
 from mag.lib import token_store
-from mag.lib.myob_client import TOKENS_FILE as MYOB_TOKENS_FILE
+from mag.lib.myob_client import MYOB_TOKENS_FILE
 from mag.proxy.proxy import AUDIT_LOG
 
 SERVICE = "mag-proxy.service"

@@ -30,7 +30,7 @@ from urllib.request import Request, urlopen
 
 from mag.lib.paths import DATA_DIR
 
-TOKENS_FILE = os.path.join(DATA_DIR, "tokens.json")
+MYOB_TOKENS_FILE = os.path.join(DATA_DIR, "tokens.json")
 
 TOKEN_ENDPOINT = "https://secure.myob.com/oauth2/v1/authorize"
 API_BASE = "https://api.myob.com/accountright"
@@ -39,17 +39,17 @@ TIMEOUT = 6
 
 
 def load_myob_tokens() -> dict:
-    if not os.path.exists(TOKENS_FILE):
-        raise SystemExit(f"{TOKENS_FILE} not found — run `mag oauth` first.")
-    with open(TOKENS_FILE) as f:
+    if not os.path.exists(MYOB_TOKENS_FILE):
+        raise SystemExit(f"{MYOB_TOKENS_FILE} not found — run `mag oauth` first.")
+    with open(MYOB_TOKENS_FILE) as f:
         return json.load(f)
 
 def save_myob_tokens(tokens: dict) -> None:
-    # dirname(TOKENS_FILE), not DATA_DIR, so tests can redirect TOKENS_FILE.
-    os.makedirs(os.path.dirname(TOKENS_FILE), exist_ok=True)
-    with open(TOKENS_FILE, "w") as f:
+    # dirname(MYOB_TOKENS_FILE), not DATA_DIR, so tests can redirect MYOB_TOKENS_FILE.
+    os.makedirs(os.path.dirname(MYOB_TOKENS_FILE), exist_ok=True)
+    with open(MYOB_TOKENS_FILE, "w") as f:
         json.dump(tokens, f, indent=2)
-    os.chmod(TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
+    os.chmod(MYOB_TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
 
 def refresh_myob_tokens(tokens: dict, client_id: str, client_secret: str) -> dict:
     headers = {
@@ -123,7 +123,7 @@ def raw_request(
     tokens = load_myob_tokens()
     business_id = tokens.get("businessId")
     if not business_id:
-        raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run `mag oauth`.")
+        raise SystemExit(f"{MYOB_TOKENS_FILE} has no businessId — re-run `mag oauth`.")
     
     url = f"{API_BASE}/{business_id}{path}"
     if params:
