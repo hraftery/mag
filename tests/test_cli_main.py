@@ -1,4 +1,4 @@
-"""Tests for cli/mag.py, the single dispatching entry point.
+"""Tests for mag/cli/__main__.py, the single dispatching entry point.
 
 These test the dispatcher's own routing responsibility in isolation. Eg.
 does 'oauth' route to the oauth module; does 'issue' route to tokens".
@@ -9,48 +9,48 @@ test_cli_tokens.py).
 
 import sys
 import pytest
-import mag
+from mag.cli import __main__ as mag
 
 
 def run(mocker, capsys, *argv):
     # patch.object (not the string form) - the string form resolves "sys" via
     # importlib.import_module(), which several tests below patch to a Mock,
     # so it would silently set argv on a decoy object instead of real sys.
-    mocker.patch.object(sys, "argv", ["mag.py", *argv])
+    mocker.patch.object(sys, "argv", ["mag", *argv])
     mag.main()
     return capsys.readouterr().out
 
 
 class TestDispatch:
     def test_oauth_routes_to_oauth_module(self, mocker, capsys):
-        mock_import_module = mocker.patch("mag.importlib.import_module")
+        mock_import_module = mocker.patch("mag.cli.__main__.importlib.import_module")
         mock_module = mock_import_module.return_value
 
         run(mocker, capsys, "oauth")
 
-        mock_import_module.assert_called_once_with("oauth")
+        mock_import_module.assert_called_once_with("mag.cli.oauth")
         mock_module.main.assert_called_once_with()
 
     @pytest.mark.parametrize("command", ["issue", "list", "edit", "revoke"])
     def test_token_subcommands_route_to_tokens_module(self, mocker, capsys, command):
-        mock_import_module = mocker.patch("mag.importlib.import_module")
+        mock_import_module = mocker.patch("mag.cli.__main__.importlib.import_module")
         mock_module = mock_import_module.return_value
 
         run(mocker, capsys, command)
 
-        mock_import_module.assert_called_once_with("tokens")
+        mock_import_module.assert_called_once_with("mag.cli.tokens")
         mock_module.main.assert_called_once_with()
 
     def test_token_subcommand_args_left_intact_for_tokens_py_to_parse(self, mocker, capsys):
-        # issue/list/edit/revoke are tokens.py's *own* subcommands, so mag.py
-        # must not strip the command name before delegating - tokens.py's
-        # own argparse needs to see it.
-        mocker.patch("mag.importlib.import_module")
-        mocker.patch.object(sys, "argv", ["mag.py", "issue", "--name", "x"])
+        # issue/list/edit/revoke are tokens.py's *own* subcommands, so the
+        # dispatcher must not strip the command name before delegating -
+        # tokens.py's own argparse needs to see it.
+        mocker.patch("mag.cli.__main__.importlib.import_module")
+        mocker.patch.object(sys, "argv", ["mag", "issue", "--name", "x"])
 
         mag.main()
 
-        assert sys.argv == ["mag.py", "issue", "--name", "x"]
+        assert sys.argv == ["mag", "issue", "--name", "x"]
 
 
 class TestNonRoutingBehavior:

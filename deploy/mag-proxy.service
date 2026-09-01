@@ -1,5 +1,5 @@
 [Unit]
-Description=mag proxy - issued-token to MYOB OAuth bridge (see app/proxy_server.py)
+Description=mag proxy - issued-token to MYOB OAuth bridge (see mag/proxy/proxy.py)
 After=network.target
 
 [Service]
@@ -8,24 +8,28 @@ User=mag
 Group=mag
 WorkingDirectory=__MAG_HOME__
 EnvironmentFile=__MAG_HOME__/.env
-ExecStart=/usr/bin/python3 __MAG_HOME__/app/proxy_server.py
+# Allows `from mag.lib import ...` to resolve without an install step.
+# The mag wrapper (see setup.sh) does the same for `mag` commands.
+Environment=PYTHONPATH=__MAG_HOME__
+ExecStart=/usr/bin/python3 __MAG_HOME__/mag/proxy/proxy.py
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
-# Hardening. Binds to 127.0.0.1 only (see proxy_server.py) - nginx is the
+# Hardening. Binds to 127.0.0.1 only (see mag/proxy/proxy.py) - nginx is the
 # sole internet-facing front door, proxying /proxy/ to this port.
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 # Needs write access for tokens.json (refreshed access tokens),
-# api_tokens.json (last_used_at bumps) and proxy_audit.log, all under the
-# repo root. Scoped to the whole checkout rather than enumerating the three
-# files individually, since ReadWritePaths on a not-yet-existing file is
-# fragile - simpler and more robust across first-run ordering.
-ReadWritePaths=__MAG_HOME__
+# api_tokens.json (last_used_at bumps) and proxy_audit.log, all under
+# var/ (see mag/lib/paths.py) - scoped to just that, not the whole
+# checkout, so a compromised or buggy proxy process can't touch its own
+# source. setup.sh creates var/ up front so it exists before this unit
+# ever starts (ReadWritePaths on a not-yet-existing path is fragile).
+ReadWritePaths=__MAG_HOME__/var
 
 [Install]
 WantedBy=multi-user.target

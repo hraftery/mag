@@ -1,4 +1,4 @@
-"""Tests for cli/oauth.py."""
+"""Tests for mag/cli/oauth.py."""
 
 import contextlib
 import io
@@ -12,8 +12,8 @@ from urllib.request import urlopen
 
 import pytest
 
-import myob_client
-import oauth
+from mag.lib import myob_client
+from mag.cli import oauth
 
 
 REDIRECT_URI = "https://mag.example.test/callback"
@@ -37,7 +37,7 @@ class TestExchangeCode:
         resp = MagicMock()
         resp.__enter__.return_value = resp
         resp.read.return_value = json.dumps({"access_token": "AT"}).encode()
-        mock_urlopen = mocker.patch("oauth.urlopen", return_value=resp)
+        mock_urlopen = mocker.patch("mag.cli.oauth.urlopen", return_value=resp)
 
         result = oauth.exchange_code("cid", "csecret", "authcode", REDIRECT_URI)
 
@@ -49,7 +49,7 @@ class TestExchangeCode:
         assert f"redirect_uri={REDIRECT_URI.replace(':', '%3A').replace('/', '%2F')}" in body
 
     def test_http_error_exits(self, mocker):
-        mocker.patch("oauth.urlopen", side_effect=HTTPError("u", 400, "bad", {}, io.BytesIO(b"nope")))
+        mocker.patch("mag.cli.oauth.urlopen", side_effect=HTTPError("u", 400, "bad", {}, io.BytesIO(b"nope")))
         with pytest.raises(SystemExit):
             oauth.exchange_code("cid", "csecret", "authcode", REDIRECT_URI)
 
@@ -59,7 +59,7 @@ class TestMainEnvValidation:
         monkeypatch.delenv("MYOB_CLIENT_ID", raising=False)
         monkeypatch.delenv("MYOB_CLIENT_SECRET", raising=False)
         monkeypatch.setenv("MAG_DOMAIN", "mag.example.test")
-        mock_server_cls = mocker.patch("oauth.HTTPServer")
+        mock_server_cls = mocker.patch("mag.cli.oauth.HTTPServer")
 
         with pytest.raises(SystemExit):
             oauth.main()
@@ -69,7 +69,7 @@ class TestMainEnvValidation:
         monkeypatch.setenv("MYOB_CLIENT_ID", "cid")
         monkeypatch.setenv("MYOB_CLIENT_SECRET", "csecret")
         monkeypatch.delenv("MAG_DOMAIN", raising=False)
-        mock_server_cls = mocker.patch("oauth.HTTPServer")
+        mock_server_cls = mocker.patch("mag.cli.oauth.HTTPServer")
 
         with pytest.raises(SystemExit):
             oauth.main()
@@ -81,7 +81,7 @@ STATE = "fixed-test-state"
 
 @pytest.fixture
 def oauth_server(tmp_path, monkeypatch):
-    """Sets up cli/oauth.py's real one-shot HTTPServer to run safely in
+    """Sets up mag/cli/oauth.py's real one-shot HTTPServer to run safely in
     tests: myob_client.TOKENS_FILE redirected to a scratch file (oauth.py
     saves via myob_client.save_myob_tokens(), so that's the module whose
     TOKENS_FILE actually governs where the write lands), a fixed known

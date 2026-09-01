@@ -16,7 +16,7 @@ Unlike oauth_callback.py, this is a long-running service (many clients, many
 requests over time), not a one-shot listener.
 
 Usage (on the server):
-    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy proxy_server.py
+    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy proxy.py
 """
 
 import json
@@ -26,20 +26,21 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qsl, urlparse
 
-import myob_client
-import token_store
+from mag.lib import myob_client, token_store
+from mag.lib.paths import DATA_DIR
 
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = int(os.environ.get("MAG_PROXY_PORT", "8788"))
 PATH_PREFIX = "/proxy/"
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-AUDIT_LOG = os.path.join(ROOT_DIR, "proxy_audit.log")
+AUDIT_LOG = os.path.join(DATA_DIR, "proxy_audit.log")
 
 
 def audit(token_name: str, method: str, path: str, status: int) -> None:
     line = f"{datetime.now(timezone.utc).isoformat()} {token_name} {method} {path} -> {status}\n"
     try:
+        # dirname(AUDIT_LOG), not DATA_DIR, so tests can redirect AUDIT_LOG.
+        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
         with open(AUDIT_LOG, "a") as f:
             f.write(line)
     except OSError as e:

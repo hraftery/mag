@@ -1,4 +1,4 @@
-"""Integration tests for app/proxy_server.py.
+"""Integration tests for mag/proxy/proxy.py.
 
 Spins the real ThreadingHTTPServer on an OS-assigned port and drives it with
 real HTTP requests, mocking only token_store.authorize / myob_client.raw_request
@@ -14,16 +14,15 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-import myob_client
-import proxy_server
-import token_store
+from mag.lib import myob_client, token_store
+from mag.proxy import proxy
 
 
 @pytest.fixture
 def running_server(tmp_path, monkeypatch):
-    monkeypatch.setattr(proxy_server, "AUDIT_LOG", str(tmp_path / "proxy_audit.log"))
+    monkeypatch.setattr(proxy, "AUDIT_LOG", str(tmp_path / "proxy_audit.log"))
 
-    server = proxy_server.ThreadingHTTPServer(("127.0.0.1", 0), proxy_server.ProxyHandler)
+    server = proxy.ThreadingHTTPServer(("127.0.0.1", 0), proxy.ProxyHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -53,7 +52,7 @@ def audit_log_lines():
     lines = []
     while time.monotonic() < deadline:
         try:
-            with open(proxy_server.AUDIT_LOG) as f:
+            with open(proxy.AUDIT_LOG) as f:
                 lines = f.read().splitlines()
         except FileNotFoundError:
             lines = []

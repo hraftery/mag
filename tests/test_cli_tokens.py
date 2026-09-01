@@ -1,11 +1,11 @@
-"""Tests for cli/tokens.py (the issue/list/edit/revoke subcommands)."""
+"""Tests for mag/cli/tokens.py (the issue/list/edit/revoke subcommands)."""
 
 import sys
 
 import pytest
 
-import token_store
-import tokens
+from mag.lib import token_store
+from mag.cli import tokens
 
 
 def run(mocker, capsys, *argv):
@@ -19,7 +19,7 @@ def run(mocker, capsys, *argv):
 @pytest.fixture
 def tokens_file(tmp_path, monkeypatch):
     path = tmp_path / "api_tokens.json"
-    monkeypatch.setattr(token_store, "TOKENS_FILE", str(path))
+    monkeypatch.setattr(token_store, "API_TOKENS_FILE", str(path))
     return str(path)
 
 

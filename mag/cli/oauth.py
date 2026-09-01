@@ -15,8 +15,8 @@ tokens.json directly rather than going through this flow again.
 MYOB's OAuth2.0 Authentication Guide:
 https://apisupport.myob.com/hc/en-us/articles/13065472856719
 
-Not runnable on its own - invoked via mag.py's "oauth" command:
-    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy MAG_DOMAIN=zzz mag.py oauth
+Not runnable on its own - invoked via mag's "oauth" command:
+    MYOB_CLIENT_ID=xxx MYOB_CLIENT_SECRET=yyy MAG_DOMAIN=zzz mag oauth
 """
 
 import json
@@ -28,9 +28,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT_DIR, "app"))
-import myob_client
+from mag.lib import myob_client
 
 LISTEN_HOST = "127.0.0.1"
 LISTEN_PORT = 8787
@@ -177,4 +175,4 @@ def main():
     print(f"Saved tokens to {myob_client.TOKENS_FILE}")
 
 if __name__ == "__main__":
-    sys.exit("Run this via: mag.py oauth")
+    sys.exit("Run this via: mag oauth (see setup.sh)")

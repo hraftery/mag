@@ -21,9 +21,10 @@ import csv
 import os
 import sys
 
+# Include the path to the mag package.
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT_DIR, "app"))
-from myob_client import api_get_all, load_myob_tokens
+sys.path.insert(0, ROOT_DIR)
+from mag.lib.myob_client import api_get_all, load_myob_tokens
 
 
 def validate_output_path(path: str) -> None:

@@ -10,17 +10,25 @@ An automation tool for [MYOB](https://www.myob.com/). Provides scripting and str
 
 ## Layout
 
-- [`app/`](app/) — the persistent application: `proxy_server.py` (the service
-  itself) plus the `myob_client.py` / `token_store.py` library it's built on.
-  This is what keeps running on the server.
-- [`cli/`](cli/) — one-off tools a human runs by hand. `mag.py` is
-  the *only* user interface (`mag.py oauth|issue|list|edit|revoke`); `oauth`
-  dispatches to `oauth.py`, and `issue`/`list`/`edit`/`revoke` are
-  themselves subcommands of `tokens.py` - neither is runnable directly.
+- [`mag/`](mag/) — a plain, uninstalled Python package (no pip/venv - the
+  `mag` wrapper and the systemd unit both just put this checkout on
+  `PYTHONPATH`; see [Setup](#setup)):
+  - [`mag/proxy/`](mag/proxy/) — the persistent application: `proxy.py`, the
+    service that keeps running on the server.
+  - [`mag/lib/`](mag/lib/) — the library `proxy.py` is built on
+    (`myob_client.py`, `token_store.py`), shared with `mag/cli/` and
+    `examples/` below - none of it is proxy-specific.
+  - [`mag/cli/`](mag/cli/) — one-off tools a human runs by hand, via the
+    installed `mag` command (`mag oauth|issue|list|edit|revoke`).
+    `__main__.py` is the *only* user interface; `oauth` dispatches to
+    `oauth.py`, and `issue`/`list`/`edit`/`revoke` are themselves
+    subcommands of `tokens.py` - neither is runnable directly. (Named
+    `__main__.py`, not `mag.py` - see its docstring for why.)
 - [`examples/`](examples/) — small standalone scripts exercising the MYOB API
-  directly via `app/myob_client.py`, written while exploring what's possible
-  (`list_invoices.py`, `spend_money_by_supplier.py`).
-- [`tests/`](tests/) — unit and integration tests for `app/` and `cli/`. See
+  directly via `mag/lib/myob_client.py`, written while exploring what's
+  possible (`list_invoices.py`, `spend_money_by_supplier.py`). Unlike
+  `mag/`, runnable with no setup beyond MYOB credentials.
+- [`tests/`](tests/) — unit and integration tests for `mag/`. See
   [Testing](#testing).
 - [`setup.sh`](setup.sh) — installs/updates mag on the server (nginx site,
   `mag-proxy` systemd unit, global `mag` CLI wrapper). [`deploy/`](deploy/)
@@ -44,7 +52,7 @@ To avoid introducing a second API, `mag` does not attempt to provide its own end
    code change — only whichever client reads that particular field.
 
 There is exactly **one** MYOB OAuth grant, held only by `mag`
-(`tokens.json`, from `cli/oauth.py`). It is never exposed to a caller.
+(`tokens.json`, from `mag/cli/oauth.py`). It is never exposed to a caller.
 On the other hand, every client holds one or more `mag`-issued tokens,
 scoped far more narrowly than the OAuth grant.
 
@@ -59,7 +67,7 @@ sequenceDiagram
     participant GAS as Google Apps Script
 
     Note over Admin,mag: Issuance - local, out-of-band, one-time per token
-    Admin->>mag: mag.py issue --name ... --scope ...
+    Admin->>mag: mag issue --name ... --scope ...
     mag-->>Admin: token (shown once; only its hash is stored)
 
     Note over mag,MYOB: One MYOB OAuth grant, shared underneath every client
@@ -179,13 +187,13 @@ management is local and needs no server access — `api_tokens.json` is
 created on first use:
 
 ```bash
-python3 cli/mag.py issue --name "laptop-explore" \
+mag issue --name "laptop-explore" \
   --scope "Sale/Invoice:GET" --scope "Contact:GET"
 # prints the raw token once - save it, only its hash is stored
 
-python3 cli/mag.py list                                # audit what exists
-python3 cli/mag.py edit <id> --add-scope "..."          # widen, same secret
-python3 cli/mag.py revoke <id>                          # instant, no MYOB-side effect
+mag list                                # audit what exists
+mag edit <id> --add-scope "..."         # widen, same secret
+mag revoke <id>                         # instant, no MYOB-side effect
 ```
 
 ## Token scope schema
@@ -243,11 +251,11 @@ Other properties of the scheme:
   `mag` mirrors or curates. A typo'd prefix just matches nothing (fails
   closed, safe but confusing) rather than being caught at issuance time.
 - **Clients never choose their own scope.** It's set once, by whoever runs
-  `mag.py issue`, at issuance time — not negotiated or selected by the
+  `mag issue`, at issuance time — not negotiated or selected by the
   client itself. A client only ever discovers its own scope implicitly, via
   which calls succeed.
 - **Scopes are mutable independently of the token secret** —
-  `mag.py edit <id> --add-scope "Sale/Invoice:POST"` changes what a token
+  `mag edit <id> --add-scope "Sale/Invoice:POST"` changes what a token
   can do without rotating the credential itself. Revocation is a separate,
   one-field flip (`revoked: true`), with no effect on MYOB's own grant.
 - **`last_used_at` supports pruning stale access** before it's ever an
@@ -263,7 +271,7 @@ remains stdlib-only; pytest-mock is just `unittest.mock` exposed as a
 Every test redirects any file a module would touch (`tokens.json`,
 `api_tokens.json`, `proxy_audit.log`) to a scratch temp path first, so a
 run never reads or writes real MYOB credentials or the real audit log, and
-`app/proxy_server.py` / `cli/oauth.py`'s tests spin their real HTTP
+`mag/proxy/proxy.py` / `mag/cli/oauth.py`'s tests spin their real HTTP
 servers on an OS-assigned port rather than their hardcoded real one.
 
 ```bash

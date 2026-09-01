@@ -28,8 +28,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TOKENS_FILE = os.path.join(ROOT_DIR, "tokens.json")
+from mag.lib.paths import DATA_DIR
+
+TOKENS_FILE = os.path.join(DATA_DIR, "tokens.json")
 
 TOKEN_ENDPOINT = "https://secure.myob.com/oauth2/v1/authorize"
 API_BASE = "https://api.myob.com/accountright"
@@ -39,11 +40,13 @@ TIMEOUT = 6
 
 def load_myob_tokens() -> dict:
     if not os.path.exists(TOKENS_FILE):
-        raise SystemExit(f"{TOKENS_FILE} not found — run scripts/oauth_callback.py first.")
+        raise SystemExit(f"{TOKENS_FILE} not found — run `mag oauth` first.")
     with open(TOKENS_FILE) as f:
         return json.load(f)
 
 def save_myob_tokens(tokens: dict) -> None:
+    # dirname(TOKENS_FILE), not DATA_DIR, so tests can redirect TOKENS_FILE.
+    os.makedirs(os.path.dirname(TOKENS_FILE), exist_ok=True)
     with open(TOKENS_FILE, "w") as f:
         json.dump(tokens, f, indent=2)
     os.chmod(TOKENS_FILE, 0o660)  # group-shared with the mag group - see setup.sh
@@ -92,52 +95,10 @@ def _request_headers(access_token: str, client_id: str) -> dict:
     
     return headers
 
-def api_get(path: str, params: dict | None = None) -> dict:
-    """GET an AccountRight API path (e.g. "/Sale/Invoice") for the business
-    file recorded in tokens.json, refreshing the access token on a 401."""
-    client_id = os.environ.get("MYOB_CLIENT_ID")
-    client_secret = os.environ.get("MYOB_CLIENT_SECRET")
-    if not client_id or not client_secret:
-        raise SystemExit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
-    
-    tokens = load_myob_tokens()
-    business_id = tokens.get("businessId")
-    if not business_id:
-        raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run scripts/oauth_callback.py.")
-    
-    url = f"{API_BASE}/{business_id}{path}"
-    if params:
-        url += "?" + urlencode(params)
-    
-    def do_request(access_token: str):
-        request = Request(url, headers=_request_headers(access_token, client_id))
-        return urlopen(request, timeout=TIMEOUT)
-    
-    try:
-        with do_request(tokens["access_token"]) as response:
-            return json.loads(response.read().decode())
-    except HTTPError as e:
-        if e.code != 401:
-            raise SystemExit(f"API request to {path} failed ({e.code}): {e.read().decode(errors='replace')}")
-    except URLError as e:
-        raise SystemExit(f"API request to {path} failed: could not reach {url} ({e.reason})")
-    
-    # Access token expired (401) — refresh once and retry.
-    tokens = refresh_myob_tokens(tokens, client_id, client_secret)
-    try:
-        with do_request(tokens["access_token"]) as response:
-            return json.loads(response.read().decode())
-    except HTTPError as e:
-        raise SystemExit(f"API request to {path} failed after refresh ({e.code}): {e.read().decode(errors='replace')}")
-    except URLError as e:
-        raise SystemExit(f"API request to {path} failed: could not reach {url} ({e.reason})")
-
-
 class UpstreamUnreachable(Exception):
     """MYOB's API couldn't be reached at all (network/DNS/timeout) - as
     opposed to MYOB responding with an HTTP error status, which is a normal
     response to relay, not a failure to raise."""
-
 
 def raw_request(
     method: str,
@@ -148,7 +109,7 @@ def raw_request(
 ) -> tuple[int, str | None, bytes]:
     """Forward an arbitrary request to the AccountRight API for the business
     file in tokens.json, refreshing the access token once on a 401.
-
+    
     Unlike api_get(), MYOB's own error responses are returned rather than
     raised, so a caller (the proxy server) can relay them verbatim - it's
     not this function's job to decide what's a "failure" for the caller.
@@ -162,7 +123,7 @@ def raw_request(
     tokens = load_myob_tokens()
     business_id = tokens.get("businessId")
     if not business_id:
-        raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run scripts/oauth_callback.py.")
+        raise SystemExit(f"{TOKENS_FILE} has no businessId — re-run `mag oauth`.")
     
     url = f"{API_BASE}/{business_id}{path}"
     if params:
@@ -187,6 +148,21 @@ def raw_request(
         status, ctype, data = attempt(tokens["access_token"])
     return status, ctype, data
 
+def api_get(path: str, params: dict | None = None) -> dict:
+    """GET an AccountRight API path (e.g. "/Sale/Invoice") for the business
+    file recorded in tokens.json, refreshing the access token on a 401.
+    
+    A thin wrapper around raw_request(): unlike raw_request(), a MYOB error
+    response or an unreachable upstream here exits the process rather than
+    being handed back - appropriate for a one-shot script (examples/), not
+    for the always-up proxy raw_request() itself serves."""
+    try:
+        status, _, data = raw_request("GET", path, params=params)
+    except UpstreamUnreachable as e:
+        raise SystemExit(f"API request to {path} failed: could not reach MYOB ({e})")
+    if status >= 400:
+        raise SystemExit(f"API request to {path} failed ({status}): {data.decode(errors='replace')}")
+    return json.loads(data.decode())
 
 def api_get_all(path: str, params: dict | None = None, page_size: int = 1000) -> list:
     """GET every page of an AccountRight list endpoint (paging via $top/$skip

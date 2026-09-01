@@ -1,4 +1,4 @@
-"""Tests for app/myob_client.py."""
+"""Tests for mag/lib/myob_client.py."""
 
 import base64
 import email.message
@@ -10,7 +10,7 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-import myob_client
+from mag.lib import myob_client
 
 
 def http_error(code, body: bytes = b"", content_type="application/json"):
@@ -73,7 +73,7 @@ class TestLoadSaveTokens:
 class TestRefreshTokens:
     def test_carries_over_business_id_and_name(self, mocker, tokens_file, myob_env):
         mock_urlopen = mocker.patch(
-            "myob_client.urlopen",
+            "mag.lib.myob_client.urlopen",
             return_value=fake_response(json.dumps({"access_token": "AT2", "refresh_token": "RT2"}).encode()),
         )
         old = write_tokens()
@@ -89,7 +89,7 @@ class TestRefreshTokens:
 
     def test_sends_refresh_token_grant(self, mocker, tokens_file, myob_env):
         mock_urlopen = mocker.patch(
-            "myob_client.urlopen", return_value=fake_response(json.dumps({"access_token": "AT2"}).encode())
+            "mag.lib.myob_client.urlopen", return_value=fake_response(json.dumps({"access_token": "AT2"}).encode())
         )
         write_tokens(refresh_token="RT-old")
 
@@ -101,12 +101,12 @@ class TestRefreshTokens:
         assert "refresh_token=RT-old" in sent_body
 
     def test_http_error_exits(self, mocker, tokens_file, myob_env):
-        mocker.patch("myob_client.urlopen", side_effect=http_error(401, b"bad"))
+        mocker.patch("mag.lib.myob_client.urlopen", side_effect=http_error(401, b"bad"))
         with pytest.raises(SystemExit):
             myob_client.refresh_myob_tokens({"refresh_token": "x"}, "cid", "csecret")
 
     def test_url_error_exits(self, mocker, tokens_file, myob_env):
-        mocker.patch("myob_client.urlopen", side_effect=URLError("no route"))
+        mocker.patch("mag.lib.myob_client.urlopen", side_effect=URLError("no route"))
         with pytest.raises(SystemExit):
             myob_client.refresh_myob_tokens({"refresh_token": "x"}, "cid", "csecret")
 
@@ -141,7 +141,7 @@ class TestApiGet:
 
     def test_success_returns_parsed_json(self, mocker, tokens_file, myob_env):
         write_tokens()
-        mocker.patch("myob_client.urlopen", return_value=fake_response(json.dumps({"Items": [1, 2]}).encode()))
+        mocker.patch("mag.lib.myob_client.urlopen", return_value=fake_response(json.dumps({"Items": [1, 2]}).encode()))
 
         result = myob_client.api_get("/Sale/Invoice")
 
@@ -150,7 +150,7 @@ class TestApiGet:
     def test_401_triggers_refresh_then_retry(self, mocker, tokens_file, myob_env):
         write_tokens()
         mock_urlopen = mocker.patch(
-            "myob_client.urlopen",
+            "mag.lib.myob_client.urlopen",
             side_effect=[
                 http_error(401, b"expired"),
                 fake_response(json.dumps({"access_token": "AT2"}).encode()),  # refresh_tokens' urlopen call
@@ -166,13 +166,13 @@ class TestApiGet:
 
     def test_non_401_http_error_exits(self, mocker, tokens_file, myob_env):
         write_tokens()
-        mocker.patch("myob_client.urlopen", side_effect=http_error(500, b"boom"))
+        mocker.patch("mag.lib.myob_client.urlopen", side_effect=http_error(500, b"boom"))
         with pytest.raises(SystemExit):
             myob_client.api_get("/Sale/Invoice")
 
     def test_url_error_exits(self, mocker, tokens_file, myob_env):
         write_tokens()
-        mocker.patch("myob_client.urlopen", side_effect=URLError("dns fail"))
+        mocker.patch("mag.lib.myob_client.urlopen", side_effect=URLError("dns fail"))
         with pytest.raises(SystemExit):
             myob_client.api_get("/Sale/Invoice")
 
@@ -181,7 +181,7 @@ class TestRawRequest:
     def test_success_relays_status_and_body_unmodified(self, mocker, tokens_file, myob_env):
         write_tokens()
         mocker.patch(
-            "myob_client.urlopen",
+            "mag.lib.myob_client.urlopen",
             return_value=fake_response(b'{"ok":true}', content_type="application/json", status=201),
         )
 
@@ -193,7 +193,7 @@ class TestRawRequest:
 
     def test_myob_http_error_is_returned_not_raised(self, mocker, tokens_file, myob_env):
         write_tokens()
-        mocker.patch("myob_client.urlopen", side_effect=http_error(422, b'{"error":"bad"}'))
+        mocker.patch("mag.lib.myob_client.urlopen", side_effect=http_error(422, b'{"error":"bad"}'))
 
         status, ctype, data = myob_client.raw_request("POST", "/Sale/Invoice")
 
@@ -203,7 +203,7 @@ class TestRawRequest:
     def test_401_refreshes_once_then_retries(self, mocker, tokens_file, myob_env):
         write_tokens()
         mocker.patch(
-            "myob_client.urlopen",
+            "mag.lib.myob_client.urlopen",
             side_effect=[
                 http_error(401, b""),
                 fake_response(json.dumps({"access_token": "AT2"}).encode()),  # refresh
@@ -217,14 +217,14 @@ class TestRawRequest:
         assert data == b'{"ok":true}'
 
     def test_unreachable_upstream_raises(self, mocker, tokens_file, myob_env):
-        mocker.patch("myob_client.urlopen", side_effect=URLError("unreachable"))
+        mocker.patch("mag.lib.myob_client.urlopen", side_effect=URLError("unreachable"))
         write_tokens()
         with pytest.raises(myob_client.UpstreamUnreachable):
             myob_client.raw_request("GET", "/Sale/Invoice")
 
     def test_body_and_content_type_forwarded(self, mocker, tokens_file, myob_env):
         write_tokens()
-        mock_urlopen = mocker.patch("myob_client.urlopen", return_value=fake_response(b"{}", status=201))
+        mock_urlopen = mocker.patch("mag.lib.myob_client.urlopen", return_value=fake_response(b"{}", status=201))
 
         myob_client.raw_request("POST", "/Sale/Invoice", body=b'{"x":1}', content_type="application/json")
 
@@ -246,7 +246,7 @@ class TestApiGetAll:
             seen_params.append(dict(params))
             return pages.pop(0)
 
-        mocker.patch("myob_client.api_get", side_effect=fake_api_get)
+        mocker.patch("mag.lib.myob_client.api_get", side_effect=fake_api_get)
 
         result = myob_client.api_get_all("/Sale/Invoice", page_size=2)
 
@@ -256,7 +256,7 @@ class TestApiGetAll:
         assert (seen_params[1]["$top"], seen_params[1]["$skip"]) == (2, 2)
 
     def test_single_short_page_no_extra_call(self, mocker):
-        mock_api_get = mocker.patch("myob_client.api_get", return_value={"Items": [1]})
+        mock_api_get = mocker.patch("mag.lib.myob_client.api_get", return_value={"Items": [1]})
 
         result = myob_client.api_get_all("/Sale/Invoice", page_size=1000)
 
@@ -264,7 +264,7 @@ class TestApiGetAll:
         assert mock_api_get.call_count == 1
 
     def test_handles_bare_list_response(self, mocker):
-        mocker.patch("myob_client.api_get", return_value=[1, 2, 3])
+        mocker.patch("mag.lib.myob_client.api_get", return_value=[1, 2, 3])
 
         result = myob_client.api_get_all("/Sale/Invoice", page_size=10)
 

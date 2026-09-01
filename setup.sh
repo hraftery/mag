@@ -38,11 +38,16 @@ echo "==> mag setup running from $MAG_HOME"
 
 # --- 1. system user -----------------------------------------------------
 # The systemd unit runs as this user; it also needs to own the checkout
-# (tokens.json / api_tokens.json / proxy_audit.log / .env all live under it).
+# (tokens.json / api_tokens.json / proxy_audit.log live under var/; .env
+# lives at the repo root).
 if ! id -u "$MAG_USER" &>/dev/null; then
     echo "==> creating system user $MAG_USER"
     useradd --system --home "$MAG_HOME" --shell /usr/sbin/nologin "$MAG_USER"
 fi
+
+# Create var/ before the chown/chmod sweep below, so it's covered by the
+# same pass rather than needing its own - see mag/lib/paths.py.
+mkdir -p "$MAG_HOME/var"
 
 # Group-share the checkout with whoever ran this script, rather than
 # needing `sudo -u mag` before every mag/git command (setuid doesn't work
@@ -53,7 +58,11 @@ fi
 # requirement for CLI operations.
 chown -R "$MAG_USER:$MAG_GROUP" "$MAG_HOME"
 chmod -R g+rwX "$MAG_HOME"
-chmod g+s "$MAG_HOME"   # new files/dirs created here inherit the mag group
+# Both the checkout root and var/ specifically: g+s on a directory only
+# applies to things created within it *after* the bit is set, so var/ needs
+# its own copy - g+s on $MAG_HOME alone wouldn't reach files mag-proxy.service
+# creates inside var/ later (tokens.json etc. on first run).
+chmod g+s "$MAG_HOME" "$MAG_HOME/var"
 git -C "$MAG_HOME" config core.sharedRepository group   # so `git pull` as a group member works too
 
 if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]] && ! id -nG "$SUDO_USER" | grep -qw "$MAG_GROUP"; then
@@ -104,11 +113,21 @@ prompt_if_unset MYOB_CLIENT_SECRET "MYOB_CLIENT_SECRET" secret
 prompt_if_unset MAG_DOMAIN         "Domain this server is reachable at (e.g. mag.example.com)"
 
 # --- 3. nginx site ---------------------------------------------------------
-echo "==> installing nginx site for $MAG_DOMAIN"
-sed "s|__MAG_DOMAIN__|$MAG_DOMAIN|g" "$MAG_HOME/deploy/mag-proxy.conf" > /etc/nginx/sites-available/mag-proxy.conf
-ln -sf /etc/nginx/sites-available/mag-proxy.conf /etc/nginx/sites-enabled/mag-proxy.conf
-nginx -t
-systemctl reload nginx
+if [[ ! -d /etc/nginx ]]; then
+    echo "==> nginx not found (/etc/nginx missing) - skipping nginx site install." >&2
+    echo "    mag needs a reverse proxy in front of it for /callback and /proxy/ -" >&2
+    echo "    configure your own web server manually using deploy/mag-proxy.conf as a template." >&2
+elif ! systemctl is-active --quiet nginx; then
+    echo "==> nginx is installed but not running - skipping nginx site install." >&2
+    echo "    start it (systemctl start nginx) and re-run, or configure your own" >&2
+    echo "    web server manually using deploy/mag-proxy.conf as a template." >&2
+else
+    echo "==> installing nginx site for $MAG_DOMAIN"
+    sed "s|__MAG_DOMAIN__|$MAG_DOMAIN|g" "$MAG_HOME/deploy/mag-proxy.conf" > /etc/nginx/sites-available/mag-proxy.conf
+    ln -sf /etc/nginx/sites-available/mag-proxy.conf /etc/nginx/sites-enabled/mag-proxy.conf
+    nginx -t
+    systemctl reload nginx
+fi
 
 # --- 4. mag-proxy systemd unit -------------------------------------------
 # Rendered from the deploy/ template with this checkout's real path
@@ -120,26 +139,27 @@ systemctl enable mag-proxy.service
 systemctl restart mag-proxy.service   # restart (not start) so a redeploy picks up new code too
 
 # --- 5. global `mag` CLI ----------------------------------------------
-# A thin wrapper, not a real package install - cli/ and app/ stay the flat,
-# dependency-free scripts they already are; this just puts `mag` on PATH
-# and makes sure .env is loaded for manual invocations too (e.g. `mag
-# oauth`), not just the systemd-supervised proxy.
+# A thin wrapper, since we don't need the complexity of a setuptools project.
+# Puts `mag` on PATH, loads the same .env as mag-proxy.service does, and
+# puts the project on PYTHONPATH so `import mag...` resolves without an
+# install step.
 echo "==> installing /usr/local/bin/mag"
 cat > /usr/local/bin/mag <<EOF
 #!/usr/bin/env bash
 set -a
 [ -f "$MAG_HOME/.env" ] && source "$MAG_HOME/.env"
 set +a
-exec python3 "$MAG_HOME/cli/mag.py" "\$@"
+export PYTHONPATH="$MAG_HOME\${PYTHONPATH:+:\$PYTHONPATH}"
+exec python3 -m mag.cli "\$@"
 EOF
 chmod 755 /usr/local/bin/mag
 
 echo "==> done."
 echo "    status:  systemctl status mag-proxy.service"
 echo "    logs:    journalctl -u mag-proxy.service -f"
-if [[ ! -f "$MAG_HOME/tokens.json" ]]; then
-    echo "    NEXT STEP: in a NEW session (or after 'newgrp $MAG_GROUP' in this one -"
-    echo "               group membership added above doesn't apply retroactively),"
-    echo "               run 'mag oauth' to authorize with MYOB, then:"
+if [[ ! -f "$MAG_HOME/var/tokens.json" ]]; then
+    echo "    NEXT STEP: run 'newgrp $MAG_GROUP' to pick up the new group"
+    echo "               membership, then run 'mag oauth' to authorize with"
+    echo "               MYOB. Finally, run:"
     echo "               sudo systemctl restart mag-proxy.service"
 fi

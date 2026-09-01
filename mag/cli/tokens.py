@@ -4,26 +4,23 @@ Prints the raw token once at issuance - only its hash is stored
 (api_tokens.json), so a lost token can only be revoked and reissued, not
 recovered.
 
-Not runnable on its own - invoked via mag.py's issue/list/edit/revoke
+Not runnable on its own - invoked via mag's issue/list/edit/revoke
 commands:
 
 Usage:
-    mag.py issue --name "laptop-explore" \\
-        --scope "Sale/Invoice:GET" \\
-        --scope "Banking/SpendMoneyTxn:GET" \\
-        --scope "Contact:GET"
-    mag.py list
-    mag.py edit 7f9a2e1c --add-scope "Sale/Invoice:POST"
-    mag.py revoke 7f9a2e1c
+    mag issue --name "laptop-explore" \\
+              --scope "Sale/Invoice:GET" \\
+              --scope "Banking/SpendMoneyTxn:GET" \\
+              --scope "Contact:GET"
+    mag list
+    mag edit 7f9a2e1c --add-scope "Sale/Invoice:POST"
+    mag revoke 7f9a2e1c
 """
 
 import argparse
-import os
 import sys
 
-ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(ROOT_DIR, "app"))
-from token_store import add_scope, find_by_id, issue, load_records, revoke
+from mag.lib.token_store import add_scope, find_by_id, issue, load_records, revoke
 
 
 def cmd_issue(args):
@@ -37,7 +34,7 @@ def cmd_issue(args):
         print(f"  scope: {scope['prefix'] or '*'} [{', '.join(scope['methods'])}]")
     print()
     print("Raw token (shown once - save it now):")
-    print(raw_token)
+    print(raw_token) # Never stored
 
 
 def cmd_list(args):
@@ -125,4 +122,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit("Run this via: mag.py <issue|list|edit|revoke>")
+    sys.exit("Run this via: mag <issue|list|edit|revoke>  (see setup.sh)")

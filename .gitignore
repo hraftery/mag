@@ -1,6 +1,4 @@
-tokens.json
-api_tokens.json
-proxy_audit.log
+/var/
 .env
 __pycache__/
 *.pyc

@@ -1,7 +1,7 @@
 # Deploying mag
 
 [`setup.sh`](../setup.sh) (repo root) installs/updates everything needed
-to run `app/proxy_server.py` as a real service: the nginx site, the
+to run `mag/proxy/proxy.py` as a real service: the nginx site, the
 `mag-proxy` systemd unit, and a global `mag` CLI wrapper. This directory
 holds the templates it renders (`mag-proxy.conf`, `mag-proxy.service`).
 
@@ -11,7 +11,7 @@ that's already done and you're ready to install the service.
 
 ## Why systemd
 
-`proxy_server.py` needs restart-on-crash, start-on-boot, and centralized
+`proxy.py` needs restart-on-crash, start-on-boot, and centralized
 logs. systemd is already on the box (no new dependency, matching this
 repo's stdlib-only ethos) and is exactly built for supervising a network
 daemon like this. `mag oauth` (the OAuth authorization step) stays a
@@ -73,7 +73,7 @@ mag oauth                              # prints the MYOB consent URL - open it l
 sudo systemctl restart mag-proxy.service
 ```
 
-Confirm it worked: `test -f /opt/mag/tokens.json` and
+Confirm it worked: `test -f /opt/mag/var/tokens.json` and
 `sudo systemctl status mag-proxy.service`.
 
 **Verify end to end** — issue yourself a token locally (`mag issue ...`,
@@ -82,7 +82,7 @@ proxy (substitute your own `MAG_DOMAIN`):
 
 ```bash
 curl -H "Authorization: Bearer <issued token>" https://mag.example.com/proxy/Sale/Invoice
-tail -f /opt/mag/proxy_audit.log
+tail -f /opt/mag/var/proxy_audit.log
 journalctl -u mag-proxy.service -f
 ```
 
@@ -102,7 +102,7 @@ journalctl -u mag-proxy.service -f
   sudo systemctl restart mag-proxy.service
   ```
 - **Logs:** `journalctl -u mag-proxy.service` (service lifecycle, stdout)
-  vs. `/opt/mag/proxy_audit.log` (every proxied request: token name,
+  vs. `/opt/mag/var/proxy_audit.log` (every proxied request: token name,
   method, path, status).
 - **Tokens:** manage client API tokens on the server with
   `mag issue|list|edit|revoke` — see the main README's

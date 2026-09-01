@@ -1,16 +1,16 @@
-"""Tests for app/token_store.py."""
+"""Tests for mag/lib/token_store.py."""
 
 import os
 import pytest
-import token_store
+from mag.lib import token_store
 
 
 @pytest.fixture
 def tokens_file(tmp_path, monkeypatch):
-    """Redirects token_store.TOKENS_FILE to a scratch file for the test, so
-    tests never touch the real api_tokens.json."""
+    """Redirects token_store.API_TOKENS_FILE to a scratch file for the test,
+    so tests never touch the real api_tokens.json."""
     path = tmp_path / "api_tokens.json"
-    monkeypatch.setattr(token_store, "TOKENS_FILE", str(path))
+    monkeypatch.setattr(token_store, "API_TOKENS_FILE", str(path))
     return str(path)
 
 
@@ -92,7 +92,7 @@ class TestIssueFindRevokeEditRoundtrip:
 
     def test_saved_file_permissions_owner_and_group(self):
         token_store.issue("a", ["Contact:GET"])
-        mode = os.stat(token_store.TOKENS_FILE).st_mode & 0o777
+        mode = os.stat(token_store.API_TOKENS_FILE).st_mode & 0o777
         assert mode == 0o660
 
 

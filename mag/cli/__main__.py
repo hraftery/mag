@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""mag - single command-line entry point for the mag project's scripts.
+"""Entry point for the mag command line interface.
+
+Can be run via `python3 -m mag.cli`, but intended to be used via a `mag`
+wrapper (see setup.sh). Do not use "mag.py" as a filename because that
+would shadow the root level package name.
 
 Usage:
-    mag.py <command> [args...]
+    mag <command> [args...]
 
 Commands:
     oauth    One-shot MYOB OAuth2 authorization        (oauth.py)
@@ -11,7 +15,7 @@ Commands:
     edit     Add a scope to an existing API token      (tokens.py)
     revoke   Revoke an API token                       (tokens.py)
 
-Run `mag.py <command> --help` for command-specific options.
+Run `mag <command> --help` for command-specific options.
 """
 
 import importlib
@@ -34,10 +38,10 @@ def main():
         return
     
     if command in OAUTH_COMMANDS:
-        module = importlib.import_module("oauth")
+        module = importlib.import_module("mag.cli.oauth")
         module.main()
     elif command in TOKEN_COMMANDS:
-        module = importlib.import_module("tokens")
+        module = importlib.import_module("mag.cli.tokens")
         module.main()
     else:
         sys.exit(f"Unknown command {command!r} - run with --help to see available commands.")
