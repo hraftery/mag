@@ -88,6 +88,9 @@ journalctl -u mag-proxy.service -f
 
 ## Day to day
 
+- **Status:** `mag status` - service state, recent logs, MYOB
+  authorization, issued API tokens, and recent proxy activity, all in one
+  place. Good first command when checking on a deployment.
 - **Redeploy after a code change:**
   ```bash
   cd /opt/mag && git pull
@@ -101,8 +104,9 @@ journalctl -u mag-proxy.service -f
   mag oauth
   sudo systemctl restart mag-proxy.service
   ```
-- **Logs:** `journalctl -u mag-proxy.service` (service lifecycle, stdout)
-  vs. `/opt/mag/var/proxy_audit.log` (every proxied request: token name,
+- **Logs:** `mag status` includes both, or read them directly -
+  `journalctl -u mag-proxy.service` (service lifecycle, stdout) vs.
+  `/opt/mag/var/proxy_audit.log` (every proxied request: token name,
   method, path, status).
 - **Tokens:** manage client API tokens on the server with
   `mag issue|list|edit|revoke` — see the main README's

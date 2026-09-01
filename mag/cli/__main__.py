@@ -9,6 +9,7 @@ Usage:
     mag <command> [args...]
 
 Commands:
+    status   Service state, logs, and recent activity  (status.py)
     oauth    One-shot MYOB OAuth2 authorization        (oauth.py)
     issue    Issue a new API token                     (tokens.py)
     list     List API tokens and their scopes          (tokens.py)
@@ -21,7 +22,8 @@ Run `mag <command> --help` for command-specific options.
 import importlib
 import sys
 
-# oauth is a standalone script with no subcommands of its own.
+# status and oauth are standalone scripts with no subcommands of their own.
+STATUS_COMMANDS = {"status"}
 OAUTH_COMMANDS = {"oauth"}
 # issue/list/edit/revoke are themselves subcommands of tokens.py.
 TOKEN_COMMANDS = {"issue", "list", "edit", "revoke"}
@@ -31,13 +33,16 @@ def main():
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
-    
+
     command = sys.argv[1]
     if command in ("-h", "--help"):
         print(__doc__)
         return
-    
-    if command in OAUTH_COMMANDS:
+
+    if command in STATUS_COMMANDS:
+        module = importlib.import_module("mag.cli.status")
+        module.main()
+    elif command in OAUTH_COMMANDS:
         module = importlib.import_module("mag.cli.oauth")
         module.main()
     elif command in TOKEN_COMMANDS:

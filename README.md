@@ -182,6 +182,10 @@ proxied request — success or reject — is appended to `proxy_audit.log`
 
 ## Usage
 
+`mag status` shows service state, recent logs, MYOB authorization, issued
+tokens, and recent proxy activity at a glance - see
+[deploy/README.md](deploy/README.md#day-to-day).
+
 Once the proxy is running (see [Setup](#setup)), day-to-day token
 management is local and needs no server access — `api_tokens.json` is
 created on first use:

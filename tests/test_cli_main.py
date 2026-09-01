@@ -22,6 +22,15 @@ def run(mocker, capsys, *argv):
 
 
 class TestDispatch:
+    def test_status_routes_to_status_module(self, mocker, capsys):
+        mock_import_module = mocker.patch("mag.cli.__main__.importlib.import_module")
+        mock_module = mock_import_module.return_value
+
+        run(mocker, capsys, "status")
+
+        mock_import_module.assert_called_once_with("mag.cli.status")
+        mock_module.main.assert_called_once_with()
+
     def test_oauth_routes_to_oauth_module(self, mocker, capsys):
         mock_import_module = mocker.patch("mag.cli.__main__.importlib.import_module")
         mock_module = mock_import_module.return_value
