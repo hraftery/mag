@@ -10,9 +10,9 @@ Steps to get `mag` running from scratch, are as follows.
 
 ### 1. Get MYOB API credentials
 
-Register an app in the MYOB Developer Centre. Note the `MYOB_CLIENT_ID` / `MYOB_CLIENT_SECRET` pair for use in step 3. See MYOB's [OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719).
+Register an app in the MYOB Developer Centre (see MYOB's [OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719)). Enable these scopes: `sme-company-file`, `sme-contacts-customer`, `sme-contacts-supplier`, `sme-sales`, `sme-banking`.
 
-Enable these scopes: `sme-company-file`, `sme-contacts-customer`, `sme-contacts-supplier`, `sme-sales`, `sme-banking`.
+Note the `MYOB_CLIENT_ID` / `MYOB_CLIENT_SECRET` pair for use in step 3. 
 
 ### 2. Point a (sub)domain at the server and get a TLS cert
 
@@ -26,8 +26,7 @@ The domain requires a TLS certificate. You can generate one with `certbot`:
 sudo certbot certonly --nginx -d <YOUR_DOMAIN>
 ```
 
-- `certonly` obtains the cert without adding a site configuration for it, leaving the nginx
-conf untouched.
+- `certonly` obtains the certificate without adding a site configuration for it. The configuration will be generated in the next step.
 - `--nginx` uses nginx itself to serve the certification verification challenge.
 
 ### 3. Install mag
@@ -117,7 +116,7 @@ mag edit <id> --add-scope "..."    # widen, same secret
 mag revoke <id>                    # instant, no MYOB-side effect
 ```
 
-### System status
+### Checking system status
 
 The `mag` service state, recent logs, MYOB authorisation, issued tokens, and recent proxy activity can all be viewed with:
 
@@ -164,9 +163,10 @@ sudo ./setup.sh
 
 Uses [pytest](https://docs.pytest.org/) + [pytest-mock](https://pytest-mock.readthedocs.io/)
 (the only non-stdlib dependencies in this repo - everything it tests
-remains stdlib-only; pytest-mock is just `unittest.mock` exposed as a
-`mocker` fixture, for consistency with `tmp_path`/`monkeypatch`/`capsys`).
-Every test redirects any file a module would touch (`tokens.json`,
+remains stdlib-only), `pytest-mock` is just `unittest.mock` exposed as a
+`mocker` fixture, for consistency with `tmp_path`/`monkeypatch`/`capsys`.
+
+Every test redirects any data file a module needs (`tokens.json`,
 `mag_tokens.json`, `proxy_audit.log`) to a scratch temp path first, so a
 run never reads or writes real MYOB credentials or the real audit log, and
 `mag/proxy/proxy.py` / `mag/cli/oauth.py`'s tests spin their real HTTP
@@ -174,11 +174,11 @@ servers on an OS-assigned port rather than their hardcoded real one.
 
 ```bash
 pip install -r requirements-dev.txt
-python3 -m pytest tests/ -v
+pytest tests
 ```
 
-Run a single file or test with `python3 -m pytest tests/test_token_store.py`
-or `-k <name>`.
+Run a single file or test with `pytest tests/test_token_store.py` or
+`-k <name>`.
 
 ## Reference
 
