@@ -328,4 +328,4 @@ Other properties of the scheme:
 
 ## License
 
-Private. Not for distribution.
+[MIT](LICENSE) — free to use, modify, and distribute, provided the copyright notice is retained in copies.
