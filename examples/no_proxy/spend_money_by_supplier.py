@@ -2,9 +2,11 @@
 """Interactively pick a Supplier, then print a CSV of Spend Money
 transactions for that supplier: date, memo, description, amount.
 
-Behaves like a real mag client would, relying on mag-issued bearer token.
-See no_proxy/spend_money_by_supplier.py for the version that talks to
-MYOB directly.
+Talks to MYOB directly via myob_client, using the one full-access OAuth
+grant in tokens.json - bypassing mag's proxy and its per-token scoping
+entirely (see ../spend_money_by_supplier.py for the version that goes
+through mag like a real client would). That makes this a tool for whoever
+runs mag itself, typically run on the server where tokens.json lives.
 
 MYOB's SpendMoneyTxn has a transaction-level "Memo" plus a Lines array,
 where each line carries its own "Memo", which we call "Description" for
@@ -14,33 +16,41 @@ several lines produces several rows sharing the same date/memo.
 Ref:
 https://developer.myob.com/api/myob-business-api/v2/banking/spend_money/
 
-Always prints CSV to stdout. Pass a filename as the one optional argument to
+Always prints CSV to stdout; pass a filename as the one optional argument to
 also write it to that file.
 
-The token needs "Contact/Supplier:GET" and "Banking/SpendMoneyTxn:GET" scope.
+Reads MYOB_CLIENT_ID / MYOB_CLIENT_SECRET from .env at the repo root (the
+same file setup.sh maintains); set them in the environment instead to
+override.
 
 Usage:
-    MAG_DOMAIN=mag.example.com MAG_TOKEN=xxxx python3 examples/spend_money_by_supplier.py [output.csv]
+    python3 examples/no_proxy/spend_money_by_supplier.py [output.csv]
 """
 
 import csv
 import os
 import sys
 
-from _proxy_client import proxy_get_all
+import _env
+
+# Include the path to the mag package.
+ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, ROOT_DIR)
+_env.load()
+from mag.lib.myob_client import api_get_all
 
 
 def validate_output_path(path: str) -> None:
     """Fail fast on an unusable path; ask before overwriting an existing file."""
     if os.path.isdir(path):
         sys.exit(f"{path} is a directory, not a file.")
-
+    
     parent = os.path.dirname(os.path.abspath(path)) or "."
     if not os.path.isdir(parent):
         sys.exit(f"Cannot write to {path}: directory {parent} does not exist.")
     if not os.access(parent, os.W_OK):
         sys.exit(f"Cannot write to {path}: no write permission for {parent}.")
-
+    
     if os.path.exists(path):
         answer = input(f"{path} already exists. Overwrite? [y/N]: ").strip().lower()
         if answer not in ("y", "yes"):
@@ -57,17 +67,17 @@ def contact_name(s: dict) -> str:
     return name or "(no name)"
 
 def pick_supplier() -> dict:
-    suppliers = proxy_get_all("/Contact/Supplier")
+    suppliers = api_get_all("/Contact/Supplier")
     suppliers = [s for s in suppliers if not s.get("IsIndividual")]
     if not suppliers:
         sys.exit("No (non-individual) suppliers found.")
-
+    
     suppliers.sort(key=lambda s: contact_name(s).lower())
-
+    
     print("Suppliers:")
     for i, s in enumerate(suppliers, start=1):
         print(f"{i:3}. {contact_name(s)}")
-
+    
     while True:
         choice = input(f"\nPick a supplier [1-{len(suppliers)}]: ").strip()
         if choice.isdigit() and 1 <= int(choice) <= len(suppliers):
@@ -79,21 +89,21 @@ def main():
     output_path = sys.argv[1] if len(sys.argv) > 1 else None
     if output_path:
         validate_output_path(output_path)
-
+    
     supplier = pick_supplier()
     supplier_uid = supplier["UID"]
-
+    
     # Server-side filter on the single Contact covering all lines.
     params = {
         "$filter": f"Contact/UID eq guid'{supplier_uid}'",
         "$orderby": "Date desc"
     }
-    matching = proxy_get_all("/Banking/SpendMoneyTxn", params=params)
-
+    matching = api_get_all("/Banking/SpendMoneyTxn", params=params)
+    
     if not matching:
         print(f"No Spend Money transactions found for {contact_name(supplier)}.")
         return
-
+    
     output_file = open(output_path, "w", newline="") if output_path else None
     writers = [csv.writer(sys.stdout)]
     if output_file:
@@ -114,7 +124,7 @@ def main():
     finally:
         if output_file:
             output_file.close()
-
+    
     print(f"\n{len(matching)} transaction(s) for {contact_name(supplier)} written to stdout"
           + (f" and {output_path}." if output_path else "."))
 

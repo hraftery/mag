@@ -186,16 +186,15 @@ Run a single file or test with `pytest tests/test_token_store.py` or
 
 ### Layout
 
-- [`mag/`](mag/) — a plain, uninstalled Python package (no pip/venv requirements)
-  - [`mag/proxy/`](mag/proxy/) — the persistent application: `proxy.py` is a service that runs on the server and provides the gateway to the MYOB API.
-  - [`mag/lib/`](mag/lib/) — shared functionality.
-  - [`mag/cli/`](mag/cli/) — a command-line interface to perform individual tasks.
-- [`examples/`](examples/) — standalone scripts that demonstrate how to exercise the MYOB API via `mag/lib/myob_client.py`.
-- [`tests/`](tests/) — unit and integration tests. See
-  [Testing](#testing).
-- [`setup.sh`](setup.sh) — installs or updates `mag` on the server. See [Setup](#setup).
-- [`templates/`](templates/)
-  holds the templates used by `setup.sh`.
+- [`mag/`](mag/) - a plain, uninstalled Python package (no pip/venv requirements)
+  - [`mag/proxy/`](mag/proxy/) - the persistent application: `proxy.py` is a service that runs on the server and provides the gateway to the MYOB API.
+  - [`mag/lib/`](mag/lib/) - shared functionality.
+  - [`mag/cli/`](mag/cli/) - a command-line interface to perform individual tasks.
+- [`examples/`](examples/) - standalone scripts showing how a client can use the mag proxy, with a `mag issue`d token. This is the pattern any real client (GAS, a script, Postman) would follow.
+  - [`examples/no_proxy/`](examples/no_proxy/) - the same tasks, but talking to MYOB directly via `mag/lib/myob_client.py`, bypassing mag's proxy. Not a usage example of mag, but a tool for exploring the MYOB API itself with the full OAuth grant.
+- [`tests/`](tests/) - unit and integration tests. See [Testing](#testing).
+- [`setup.sh`](setup.sh) - installs or updates `mag` on the server. See [Setup](#setup).
+- [`templates/`](templates/) - holds the templates used by `setup.sh`.
 - [`.env.example`](.env.example) — template for `.env`, the local store for MYOB credentials and domain created by `setup.sh`.
 
 ### Architecture
