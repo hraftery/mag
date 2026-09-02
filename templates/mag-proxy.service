@@ -22,14 +22,14 @@ RestartSec=5
 # sole internet-facing front door, proxying /proxy/ to this port.
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=true
+# ProtectHome=true hides /home, /root and /run/user outright, regardless
+# of ReadOnlyPaths/ReadWritePaths, so a checkout there would fail with
+# "Permission denied". setup.sh promises "clone it anywhere" so we use
+# tmpfs instead as advised by man systemd.exec. Under tmpfs, /home is a
+# real (empty) filesystem, so the ReadOnlyPaths/ReadWritePaths below can
+# still mount paths within those directories back into view.
+ProtectHome=tmpfs
 PrivateTmp=true
-# ProtectHome hides /home, /root and /run/user outright, regardless of file
-# permissions - so if this checkout lives under /home (setup.sh promises
-# "clone it anywhere"), WorkingDirectory itself would be invisible to the
-# unit and fail to start with "Changing to the requested working directory
-# failed: Permission denied". Explicitly re-exposing __MAG_HOME__ read-only
-# covers that case without weakening ProtectHome for the rest of /home.
 ReadOnlyPaths=__MAG_HOME__
 # Needs write access for tokens.json (refreshed access tokens),
 # mag_tokens.json (last_used_at bumps) and proxy_audit.log, all under
