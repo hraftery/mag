@@ -92,6 +92,8 @@ mag issue --name "MyToken" \
   --scope "Sale/Invoice:GET" --scope "Contact:GET"
 ```
 
+Each `--scope` is a `PREFIX:METHOD1,METHOD2` string, e.g. `"Sale/Invoice:GET,POST"` — see [Token scope schema](#token-scope-schema) for the full format.
+
 Multiple tokens with different scopes are supported and encouraged. Use a descriptive name to identify them, and see [the list of scopes](https://developer.myob.com/api/myob-business-api/api-overview/granular_data_scopes/) to figure out which ones you need.
 
 Note client tokens are issued without contact with the MYOB API nor the `mag` proxy.
@@ -259,6 +261,12 @@ MYOB's own URL namespace (`Contact/`, `Sale/Invoice`, `Banking/SpendMoneyTxn`,
 ...) as the vocabulary instead of inventing one, and adding the one
 dimension MYOB's own `sme-*` OAuth scopes don't offer: **read vs write, at
 the individual endpoint level.**
+
+On the command line (`mag issue --scope ...` / `mag edit --add-scope ...`)
+that pair is written as a single string, `PREFIX:METHOD1,METHOD2`, e.g.
+`"Sale/Invoice:GET,POST"`. An empty prefix (`":GET"`) matches every path.
+Parsed, it becomes a `{"prefix": ..., "methods": [...]}` object like the
+ones below (see [`parse_scope`](mag/lib/token_store.py)).
 
 A token record:
 
