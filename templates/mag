@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Managed by setup.sh - installed to /usr/local/bin/mag. Re-running setup.sh
+# overwrites it, so edit this source file, not the installed copy.
+# __MAG_HOME__ is substituted from wherever this checkout actually lives.
+
+if [ -f "__MAG_HOME__/.env" ] && [ ! -r "__MAG_HOME__/.env" ]; then
+    # .env is 660, owned by mag:mag - readable by a group member, but group
+    # membership added by setup.sh doesn't apply to an already-open
+    # session. Fail with a clear pointer here rather than a bare
+    # "Permission denied" plus a Python traceback further down.
+    echo "Can't read __MAG_HOME__/.env - if you just ran setup.sh, start a new" >&2
+    echo "session (or run 'newgrp mag') to pick up your new group membership." >&2
+    exit 1
+fi
+set -a
+[ -f "__MAG_HOME__/.env" ] && source "__MAG_HOME__/.env"
+set +a
+export PYTHONPATH="__MAG_HOME__${PYTHONPATH:+:$PYTHONPATH}"
+# So new files this creates (tokens.json, mag_tokens.json) come out
+# group-writable (660) from the start, regardless of who runs it.
+# See mag/lib/token_store.py and mag/lib/myob_client.py's save functions
+# for why this matters more than it looks: those files are written
+# alternately by a human and by the service, and only the file's *owner*
+# can chmod it after the fact.
+umask 007
+exec python3 -m mag.cli "$@"

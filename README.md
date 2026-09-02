@@ -41,16 +41,16 @@ sudo ./setup.sh
 [`setup.sh`](setup.sh) will:
 
 - create a dedicated `mag` user;
-- add the nginx site configuration (`location /callback` and `location /proxy/`) using [mag-proxy.conf](deploy/mag-proxy.conf) as a template;
+- add the nginx site configuration (`location /callback` and `location /proxy/`) using [mag-proxy.conf](templates/mag-proxy.conf) as a template;
 - add the `mag-proxy` systemd unit (see
-[deploy/README.md](deploy/README.md) for why systemd) using [mag-proxy.service](deploy/mag-proxy.service) as a template;
-- and install a global `mag` CLI wrapper.
+[Why systemd](#why-systemd)) using [mag-proxy.service](templates/mag-proxy.service) as a template;
+- and install a global `mag` CLI wrapper using [mag](templates/mag) as a template.
 
 It also prompts for values required to create or update `.env` (based on [`.env.example`](.env.example)). That includes your MYOB credentials from step 1, and the domain this server is reachable at.
 
 `.env` is the key to ensure `mag` can be configured and deployed without a separate secrets store, and the various templates can be instantiated automatically.
 
-`setup.sh` also adds you to the `mag` group, so you can call `mag`/`git` commands. See [deploy/README.md](deploy/README.md) for why that's safe here. The new group doesn't take effect immediately, so start
+`setup.sh` also adds you to the `mag` group, so you can call `mag`/`git` commands. See [Why the `mag` user/group](#why-the-mag-usergroup) for why that's safe here. The new group doesn't take effect immediately, so start
 a fresh login or run `newgrp mag` before continuing.
 
 ### 4. Authorize `mag` with MYOB
@@ -184,8 +184,8 @@ or `-k <name>`.
 - [`tests/`](tests/) — unit and integration tests. See
   [Testing](#testing).
 - [`setup.sh`](setup.sh) — installs or updates `mag` on the server. See [Setup](#setup).
-- [`deploy/`](deploy/)
-  holds the templates used by `setup.sh`. 
+- [`templates/`](templates/)
+  holds the templates used by `setup.sh`.
 - [`.env.example`](.env.example) — template for `.env`, the local store for MYOB credentials and domain created by `setup.sh`.
 
 ### Architecture
@@ -239,7 +239,7 @@ The two auth levels are never crossed: MYOB only ever sees the token `mag` reque
 
 The proxy server ([`proxy.py`](mag/proxy/proxy.py)) benefits from restart-on-crash, start-on-boot, and centralised logs. `systemd` is widely pre-installed and is built for supervising a network daemon like this.
 
-## Why the `mag` user/group
+### Why the `mag` user/group
 
 The runtime data files, (`tokens.json`, `mag_tokens.json`, `.env`) need to be readable and
 writable both by the `mag-proxy` systemd unit (which runs as the `mag` user) and by the login user that runs `mag` commands by hand. Instead of requiring `sudo -u mag` before every command to keep file ownership from drifting, the login user is added to the `mag` group. The setuid bit is ignored on scripts, so instead `setup.sh` group-shares the checkout: files are `660` rather than `600`, and whoever ran `setup.sh` (via `sudo`) is added to the `mag` group. This doesn't reduce security because that's already someone with root on this box. Group access grants nothing `sudo` doesn't already give them.

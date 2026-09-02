@@ -1,29 +1,26 @@
 #!/usr/bin/env bash
-# Installs/updates mag on this server: the mag-proxy nginx site, the
-# mag-proxy systemd unit, and a global `mag` CLI wrapper. Safe to re-run -
-# that's the whole deploy/update flow:
+# Installs or updates mag on this server from a checkout, including the
+# mag-proxy nginx site, the mag-proxy systemd unit, and a global `mag` CLI
+# wrapper. Safe to re-run.
 #
 #   git pull
 #   sudo ./setup.sh
 #
-# This directory must be a real `git clone`, not a copy of the source some
-# other way (a downloaded tarball/zip, an rsync) - git is what gives us
-# versioning and a rollback path (git checkout <sha> && sudo ./setup.sh),
-# and this script itself relies on git commands below, which would simply
-# fail on a non-git copy.
+# This directory must be a real `git clone`, not just a copy of the source.
+# git is what we use for upgrades, versioning and rollbacks, and this script
+# itself relies on git commands.
 #
 # Per-deployment config (MYOB credentials, this server's domain) lives in
 # .env at the repo root - gitignored, never committed. If it's missing or
-# incomplete, this script prompts for whatever's missing and writes it
-# there, so there's exactly one place to configure a fresh install rather
-# than values split between /etc, the repo, and hand-editing.
+# incomplete, this script prompts for what's missing and adds it, so there's
+# exactly one place to configure a fresh install.
 #
-# What this does NOT do (can't be scripted - needs a human):
+# What this does NOT do:
 #   - obtain MYOB API credentials (but this script will ask for them)
 #   - run the one-time OAuth consent flow (mag oauth, once installed below)
 #   - provision the TLS cert (certbot) or DNS - see README.md Setup
 #
-# See README.md#setup and deploy/README.md for the full walkthrough.
+# See README.md#setup for the full walkthrough.
 
 set -euo pipefail
 
@@ -163,13 +160,13 @@ prompt_if_unset MAG_DOMAIN         "Domain this server is reachable at (e.g. mag
 if [[ ! -d /etc/nginx ]]; then
     echo "==> nginx not found (/etc/nginx missing) - skipping nginx site install." >&2
     echo "    mag needs a reverse proxy in front of it for /callback and /proxy/ -" >&2
-    echo "    configure your own web server manually using deploy/mag-proxy.conf as a template." >&2
+    echo "    configure your own web server manually using templates/mag-proxy.conf as a template." >&2
 elif ! systemctl is-active --quiet nginx; then
     echo "==> nginx is installed but not running - skipping nginx site install." >&2
     echo "    start it (systemctl start nginx) and re-run, or configure your own" >&2
-    echo "    web server manually using deploy/mag-proxy.conf as a template." >&2
+    echo "    web server manually using templates/mag-proxy.conf as a template." >&2
 elif [[ ! -f "/etc/letsencrypt/live/$MAG_DOMAIN/fullchain.pem" || ! -f "/etc/letsencrypt/live/$MAG_DOMAIN/privkey.pem" ]]; then
-    # deploy/mag-proxy.conf hardcodes this same path - without this check,
+    # templates/mag-proxy.conf hardcodes this same path - without this check,
     # the failure a missing cert actually causes is nginx -t rejecting the
     # config over a certificate path that doesn't exist, several steps
     # further into this script and less clearly tied to the actual cause.
@@ -179,17 +176,17 @@ elif [[ ! -f "/etc/letsencrypt/live/$MAG_DOMAIN/fullchain.pem" || ! -f "/etc/let
     echo "    then re-run this script." >&2
 else
     echo "==> installing nginx site for $MAG_DOMAIN"
-    sed "s|__MAG_DOMAIN__|$MAG_DOMAIN|g" "$MAG_HOME/deploy/mag-proxy.conf" > /etc/nginx/sites-available/mag-proxy.conf
+    sed "s|__MAG_DOMAIN__|$MAG_DOMAIN|g" "$MAG_HOME/templates/mag-proxy.conf" > /etc/nginx/sites-available/mag-proxy.conf
     ln -sf /etc/nginx/sites-available/mag-proxy.conf /etc/nginx/sites-enabled/mag-proxy.conf
     nginx -t
     systemctl reload nginx
 fi
 
 # --- 4. mag-proxy systemd unit -------------------------------------------
-# Rendered from the deploy/ template with this checkout's real path
+# Rendered from the templates/ template with this checkout's real path
 # substituted in.
 echo "==> installing mag-proxy systemd unit"
-sed "s|__MAG_HOME__|$MAG_HOME|g" "$MAG_HOME/deploy/mag-proxy.service" > /etc/systemd/system/mag-proxy.service
+sed "s|__MAG_HOME__|$MAG_HOME|g" "$MAG_HOME/templates/mag-proxy.service" > /etc/systemd/system/mag-proxy.service
 systemctl daemon-reload
 systemctl enable mag-proxy.service
 systemctl restart mag-proxy.service   # restart (not start) so a redeploy picks up new code too
@@ -210,32 +207,10 @@ fi
 # A thin wrapper, since we don't need the complexity of a setuptools project.
 # Puts `mag` on PATH, loads the same .env as mag-proxy.service does, and
 # puts the project on PYTHONPATH so `import mag...` resolves without an
-# install step.
+# install step. Rendered from the templates/ template, same as the nginx site
+# and systemd unit above.
 echo "==> installing /usr/local/bin/mag"
-cat > /usr/local/bin/mag <<EOF
-#!/usr/bin/env bash
-if [ -f "$MAG_HOME/.env" ] && [ ! -r "$MAG_HOME/.env" ]; then
-    # .env is 660, owned by $MAG_USER:$MAG_GROUP - readable by a group
-    # member, but group membership added by setup.sh doesn't apply to an
-    # already-open session. Fail with a clear pointer here rather than a
-    # bare "Permission denied" plus a Python traceback further down.
-    echo "Can't read $MAG_HOME/.env - if you just ran setup.sh, start a new" >&2
-    echo "session (or run 'newgrp $MAG_GROUP') to pick up your new group membership." >&2
-    exit 1
-fi
-set -a
-[ -f "$MAG_HOME/.env" ] && source "$MAG_HOME/.env"
-set +a
-export PYTHONPATH="$MAG_HOME\${PYTHONPATH:+:\$PYTHONPATH}"
-# So new files this creates (tokens.json, mag_tokens.json) come out
-# group-writable (660) from the start, regardless of who runs it.
-# See mag/lib/token_store.py and mag/lib/myob_client.py's save functions
-# for why this matters more than it looks: those files are written
-# alternately by a human and by the service, and only the file's *owner*
-# can chmod it after the fact.
-umask 007
-exec python3 -m mag.cli "\$@"
-EOF
+sed "s|__MAG_HOME__|$MAG_HOME|g" "$MAG_HOME/templates/mag" > /usr/local/bin/mag
 chmod 755 /usr/local/bin/mag
 
 echo "==> done."
