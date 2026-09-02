@@ -1,5 +1,5 @@
 [Unit]
-Description=mag proxy - issued-token to MYOB OAuth bridge (see mag/proxy/proxy.py)
+Description=mag proxy server - see mag/proxy/proxy.py
 After=network.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
@@ -24,12 +24,21 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+# ProtectHome hides /home, /root and /run/user outright, regardless of file
+# permissions - so if this checkout lives under /home (setup.sh promises
+# "clone it anywhere"), WorkingDirectory itself would be invisible to the
+# unit and fail to start with "Changing to the requested working directory
+# failed: Permission denied". Explicitly re-exposing __MAG_HOME__ read-only
+# covers that case without weakening ProtectHome for the rest of /home.
+ReadOnlyPaths=__MAG_HOME__
 # Needs write access for tokens.json (refreshed access tokens),
 # mag_tokens.json (last_used_at bumps) and proxy_audit.log, all under
 # var/ (see mag/lib/paths.py) - scoped to just that, not the whole
 # checkout, so a compromised or buggy proxy process can't touch its own
 # source. setup.sh creates var/ up front so it exists before this unit
 # ever starts (ReadWritePaths on a not-yet-existing path is fragile).
+# ReadWritePaths always wins over the ReadOnlyPaths above for this nested
+# path, regardless of declaration order.
 ReadWritePaths=__MAG_HOME__/var
 
 [Install]

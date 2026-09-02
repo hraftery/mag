@@ -196,8 +196,8 @@ systemctl restart mag-proxy.service   # restart (not start) so a redeploy picks 
 # Check for a crash (eg. import error, port already in use) after a short pause.
 sleep 2
 if ! systemctl is-active --quiet mag-proxy.service; then
-    echo "ERROR: mag-proxy.service isn't running right after being" >&2
-    echo "       (re)started. Check what's wrong. These commands may help:" >&2
+    echo "ERROR: mag-proxy.service isn't running right after being (re)started." >&2
+    echo "       Check what's wrong. These commands may help:" >&2
     echo "           systemctl status mag-proxy.service" >&2
     echo "           journalctl -u mag-proxy.service -n 50 --no-pager" >&2
     exit 1
