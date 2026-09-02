@@ -10,6 +10,20 @@ client would find in mag's own .env, so there's nothing to load here.
 
 Get a token with `mag issue` (see README's "Issuing tokens") - it needs
 the right scope for whatever path is being requested.
+
+To try the commands in list_invoices.py / spend_money_by_supplier.py
+yourself, one at a time, from a REPL rather than running the whole script:
+
+    $ cd examples
+    $ MAG_DOMAIN=mag.example.com MAG_TOKEN=xxxx python3
+    >>> from _proxy_client import proxy_get, proxy_get_all
+    >>> proxy_get("/Sale/Invoice", params={"$orderby": "Date desc", "$top": 5})
+
+`cd examples` first so the `from _proxy_client import ...` above can find
+this file - it's a sibling, not part of the `mag` package. MAG_DOMAIN and
+MAG_TOKEN can also be set after entering the REPL with:
+    os.environ["MAG_DOMAIN"] = "mag.example.com"
+    os.environ["MAG_TOKEN"] = "mbt_..."
 """
 
 import json

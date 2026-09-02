@@ -25,23 +25,23 @@ COLUMNS = [
 def main():
     data = proxy_get("/Sale/Invoice", params={"$orderby": "Date desc", "$top": 20})
     invoices = data if isinstance(data, list) else data.get("Items", [])
-
+    
     if not invoices:
         print("No invoices found.")
         return
-
+    
     rows = [[getter(inv) for _, getter in COLUMNS] for inv in invoices]
     headers = [h for h, _ in COLUMNS]
     widths = [max(len(h), *(len(row[i]) for row in rows)) for i, h in enumerate(headers)]
-
+    
     def format_row(row):
         return "  ".join(cell.ljust(w) for cell, w in zip(row, widths))
-
+    
     print(format_row(headers))
     print("  ".join("-" * w for w in widths))
     for row in rows:
         print(format_row(row))
-
+    
     print()
     print("First invoice's raw fields:")
     print(sorted(invoices[0].keys()))

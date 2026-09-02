@@ -28,8 +28,9 @@ import _env
 # Include the path to the mag package.
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, ROOT_DIR)
-_env.load()
 from mag.lib.myob_client import api_get
+
+_env.load()
 
 COLUMNS = [
     # (header, function to pull a display value out of one invoice record)
