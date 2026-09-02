@@ -22,24 +22,24 @@ RestartSec=5
 # sole internet-facing front door, proxying /proxy/ to this port.
 NoNewPrivileges=true
 ProtectSystem=strict
-# ProtectHome=true hides /home, /root and /run/user outright, regardless
-# of ReadOnlyPaths/ReadWritePaths, so a checkout there would fail with
-# "Permission denied". setup.sh promises "clone it anywhere" so we use
-# tmpfs instead as advised by man systemd.exec. Under tmpfs, /home is a
-# real (empty) filesystem, so the ReadOnlyPaths/ReadWritePaths below can
-# still mount paths within those directories back into view.
+# ProtectHome=true hides /home, /root and /run/user outright, so
+# ReadOnlyPaths/ReadWritePaths in those locations would fail with
+# "Permission denied". setup.sh promises "clone it anywhere" so we use tmpfs
+# instead as advised by man systemd.exec. Under tmpfs, /home is a real (but
+# empty) filesystem. ReadOnlyPaths would still fail with "No such file or
+# directory", but BindReadOnlyPaths auto-creates the destination.
 ProtectHome=tmpfs
 PrivateTmp=true
-ReadOnlyPaths=__MAG_HOME__
+BindReadOnlyPaths=__MAG_HOME__
 # Needs write access for tokens.json (refreshed access tokens),
 # mag_tokens.json (last_used_at bumps) and proxy_audit.log, all under
 # var/ (see mag/lib/paths.py) - scoped to just that, not the whole
 # checkout, so a compromised or buggy proxy process can't touch its own
 # source. setup.sh creates var/ up front so it exists before this unit
-# ever starts (ReadWritePaths on a not-yet-existing path is fragile).
-# ReadWritePaths always wins over the ReadOnlyPaths above for this nested
-# path, regardless of declaration order.
-ReadWritePaths=__MAG_HOME__/var
+# ever starts. BindPaths (not ReadWritePaths - same auto-create issue as
+# above) wins over the BindReadOnlyPaths above for this nested path,
+# regardless of declaration order.
+BindPaths=__MAG_HOME__/var
 
 [Install]
 WantedBy=multi-user.target
