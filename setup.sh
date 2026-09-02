@@ -204,17 +204,16 @@ if ! systemctl is-active --quiet mag-proxy.service; then
 fi
 
 # --- 5. global `mag` CLI ----------------------------------------------
-# A thin wrapper, since we don't need the complexity of a setuptools project.
-# Puts `mag` on PATH, loads the same .env as mag-proxy.service does, and
-# puts the project on PYTHONPATH so `import mag...` resolves without an
-# install step. Rendered from the templates/ template, same as the nginx site
-# and systemd unit above.
+# Install a thin wrapper. Avoids the complexity of a setuptools project with
+# "entry_points". Puts `mag` on PATH, loads the same .env as mag-proxy.service
+# does, and puts the checkout on PYTHONPATH so `import mag...` resolves.
 echo "==> installing /usr/local/bin/mag"
 sed "s|__MAG_HOME__|$MAG_HOME|g" "$MAG_HOME/templates/mag" > /usr/local/bin/mag
 chmod 755 /usr/local/bin/mag
 
 echo "==> done."
 if [[ ! -f "$MAG_HOME/var/tokens.json" ]]; then
-    echo "NEXT STEP: run 'newgrp $MAG_GROUP' to pick up the new group"
-    echo "           membership, then run 'mag oauth' to authorise with MYOB."
+    echo "NEXT STEP: perform authorisation with MYOB.
+    echo "           Run 'newgrp $MAG_GROUP' to pick up the new group membership,"
+    echo "           then run 'mag oauth' to authorise with MYOB."
 fi
