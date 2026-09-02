@@ -216,7 +216,5 @@ chmod 755 /usr/local/bin/mag
 echo "==> done."
 if [[ ! -f "$MAG_HOME/var/tokens.json" ]]; then
     echo "NEXT STEP: run 'newgrp $MAG_GROUP' to pick up the new group"
-    echo "           membership, then run 'mag oauth' to authorize with"
-    echo "           MYOB. Finally, run:"
-    echo "               sudo systemctl restart mag-proxy.service"
+    echo "           membership, then run 'mag oauth' to authorise with MYOB."
 fi

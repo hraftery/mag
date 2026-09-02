@@ -9,6 +9,7 @@ MYOB credentials or the real proxy_audit.log.
 import json
 import threading
 import time
+from unittest.mock import MagicMock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -181,3 +182,49 @@ class TestForwarding:
 
         assert status == 200
         assert mock_raw_request.call_args[0][0] == method
+
+
+class TestPicksUpNewTokensWithoutRestart:
+    """myob_client.load_myob_tokens() re-reads tokens.json from disk on
+    every call - raw_request() calls it fresh each time, and proxy.py's
+    main() never preloads it (see mag/lib/myob_client.py). So a running
+    mag-proxy.service process should already see a tokens.json written by
+    a fresh `mag oauth` run on its very next request, with no restart -
+    contrary to README.md's "Re-authorising with MYOB" and setup.sh's
+    first-run instructions, both of which currently say to restart.
+
+    Unlike TestForwarding above, myob_client.raw_request() itself is left
+    to run for real here (only urlopen(), the actual outbound call to
+    MYOB, is mocked) so this exercises the real tokens.json read path,
+    against the same live running_server instance, with no restart
+    anywhere in the test."""
+
+    def test_new_tokens_json_picked_up_without_restart(self, authorized, mocker, tmp_path, monkeypatch):
+        monkeypatch.setenv("MYOB_CLIENT_ID", "cid")
+        monkeypatch.setenv("MYOB_CLIENT_SECRET", "csecret")
+        monkeypatch.setattr(myob_client, "MYOB_TOKENS_FILE", str(tmp_path / "tokens.json"))
+        myob_client.save_myob_tokens({"access_token": "AT-OLD", "refresh_token": "RT", "businessId": "biz-1"})
+
+        sent_tokens = []
+
+        def fake_urlopen(request, timeout=None):
+            sent_tokens.append(request.get_header("Authorization"))
+            resp = MagicMock()
+            resp.__enter__.return_value = resp
+            resp.__exit__.return_value = False
+            resp.read.return_value = b"{}"
+            resp.status = 200
+            resp.headers.get.return_value = "application/json"
+            return resp
+
+        mocker.patch("mag.lib.myob_client.urlopen", side_effect=fake_urlopen)
+
+        do_request(authorized, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
+
+        # Simulates `mag oauth` completing while mag-proxy.service is
+        # already running - no server restart happens here.
+        myob_client.save_myob_tokens({"access_token": "AT-NEW", "refresh_token": "RT2", "businessId": "biz-1"})
+
+        do_request(authorized, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
+
+        assert sent_tokens == ["Bearer AT-OLD", "Bearer AT-NEW"]

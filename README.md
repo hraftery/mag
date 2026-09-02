@@ -64,11 +64,7 @@ mag oauth
 
 It will show the MYOB consent URL. Open that in a browser on your own machine and approve access. Your browser's redirect hits nginx on the server, which proxies it to `mag oauth`'s listener, completing the exchange.
 
-Run it once to seed a refresh token. After that, tokens are read from `tokens.json` without needing this step to be repeated, unless the refresh token is revoked or expires.
-
-Then restart the proxy so it picks up the new `tokens.json`:
-
-`sudo systemctl restart mag-proxy.service`.
+Run it once to seed a refresh token. After that, tokens are read from `tokens.json` without needing this step to be repeated, unless the refresh token is revoked or expires. New tokens are automatically picked up by `mag-proxy.service`.
 
 `mag` is now ready for clients - see [Usage](#usage) for issuing them a token and how they call the proxy with it.
 
@@ -145,11 +141,10 @@ less $MAG_HOME/var/proxy_audit.log # every proxied request
 
 ### Re-authorising with MYOB
 
-The one MYOB OAuth grant (from [Setup step 4](#4-authorize-mag-with-myob)) can expire or be revoked on MYOB's side independently of anything client tokens do. The MYOB token is unrelated to any individual client token above. If proxied requests start failing for that reason, re-run the same one-shot command and restart the proxy:
+The one MYOB OAuth grant (from [Setup step 4](#4-authorize-mag-with-myob)) can expire or be revoked on MYOB's side independently of anything client tokens do. The MYOB token is unrelated to any individual client token above. If proxied requests start failing for that reason, re-run the same one-shot command:
 
 ```bash
 mag oauth
-sudo systemctl restart mag-proxy.service
 ```
 
 ## Testing
