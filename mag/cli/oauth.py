@@ -130,7 +130,9 @@ def make_handler(expected_state: str, client_id: str, client_secret: str, redire
                 result["error"] = "missing_code"
                 return
             
+            # print is safe to call because BaseHTTPRequestHandler is single-threaded.
             print("Callback received. Exchanging code for tokens...")
+            
             tokens = exchange_code(client_id, client_secret, code, redirect_uri)
             # Capture businessId/businessName from the redirect. See prompt=consent.
             tokens["businessId"] = query.get("businessId", [None])[0]
@@ -145,7 +147,7 @@ def make_handler(expected_state: str, client_id: str, client_secret: str, redire
             self.wfile.write(message.encode())
         
         def log_message(self, format, *args):
-            pass  # keep stdout clean; nothing sensitive is logged either way
+            pass # suppress per-request access log messages
     
     return CallbackHandler
 
