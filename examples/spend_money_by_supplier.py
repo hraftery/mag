@@ -27,7 +27,7 @@ import csv
 import os
 import sys
 
-from _proxy_client import proxy_get_all
+from _proxy_client import ProxyError, proxy_get_all
 
 
 def validate_output_path(path: str) -> None:
@@ -124,4 +124,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ProxyError as e:
+        sys.exit(str(e))

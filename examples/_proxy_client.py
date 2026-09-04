@@ -28,7 +28,6 @@ MAG_TOKEN can also be set after entering the REPL with:
 
 import json
 import os
-import sys
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -36,13 +35,25 @@ from urllib.request import Request, urlopen
 TIMEOUT = 6
 
 
+class ProxyError(RuntimeError):
+    """Raised on any failure calling mag's proxy: a missing MAG_DOMAIN/
+    MAG_TOKEN, mag itself rejecting the request (401/403), MYOB's own error
+    response relayed through mag, or mag being unreachable.
+
+    Deliberately raised rather than sys.exit()'d - unlike SystemExit, a
+    normal exception doesn't kill an interactive REPL session, just the
+    statement that raised it. list_invoices.py / spend_money_by_supplier.py
+    catch this once at the top level and turn it into a clean sys.exit for
+    the CLI."""
+
+
 def _config() -> tuple[str, str]:
     domain = os.environ.get("MAG_DOMAIN")
     token = os.environ.get("MAG_TOKEN")
     if not domain:
-        sys.exit("Set MAG_DOMAIN to the domain mag is deployed at (e.g. mag.example.com).")
+        raise ProxyError("Set MAG_DOMAIN to the domain mag is deployed at (e.g. mag.example.com).")
     if not token:
-        sys.exit("Set MAG_TOKEN to a token from `mag issue` (see README's \"Issuing tokens\").")
+        raise ProxyError("Set MAG_TOKEN to a token from `mag issue` (see README's \"Issuing tokens\").")
     return domain, token
 
 
@@ -63,9 +74,9 @@ def proxy_get(path: str, params: dict | None = None) -> dict:
         # mag itself returns 401 (no/invalid bearer token) or 403 (token
         # doesn't have this path/method in scope) before ever reaching MYOB;
         # anything else relayed here is MYOB's own error response.
-        sys.exit(f"API request to {path} failed ({e.code}): {e.read().decode(errors='replace')}")
+        raise ProxyError(f"API request to {path} failed ({e.code}): {e.read().decode(errors='replace')}") from e
     except URLError as e:
-        sys.exit(f"API request to {path} failed: could not reach mag at {domain} ({e.reason})")
+        raise ProxyError(f"API request to {path} failed: could not reach mag at {domain} ({e.reason})") from e
     return json.loads(data.decode())
 
 

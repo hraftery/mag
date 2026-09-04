@@ -10,7 +10,9 @@ Usage:
     MAG_DOMAIN=mag.example.com MAG_TOKEN=xxxx python3 examples/list_invoices.py
 """
 
-from _proxy_client import proxy_get
+import sys
+
+from _proxy_client import ProxyError, proxy_get
 
 COLUMNS = [
     # (header, function to pull a display value out of one invoice record)
@@ -48,4 +50,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ProxyError as e:
+        sys.exit(str(e))
