@@ -85,7 +85,12 @@ def cmd_revoke(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    # Without "prog", argparse infers it from how the process was actually launched
+    # (eg. `python3 -m mag.cli` via the "mag" wrapper) rather than from what the user
+    # typed (eg. "mag issue ..."). Pinned to "mag" so usage messages match our docstring.
+    parser = argparse.ArgumentParser(
+        prog="mag", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     p_issue = subparsers.add_parser("issue", help="Issue a new token")
