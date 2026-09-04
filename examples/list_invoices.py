@@ -21,6 +21,7 @@ COLUMNS = [
     ("Customer", lambda inv: (inv.get("Customer") or {}).get("Name", "")),
     ("Total", lambda inv: f"{inv['TotalAmount']:,.2f}" if "TotalAmount" in inv else ""),
     ("Status", lambda inv: inv.get("Status", "")),
+    ("InvoiceType", lambda inv: inv.get("InvoiceType", "")),
 ]
 
 
