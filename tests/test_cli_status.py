@@ -54,16 +54,16 @@ class TestMain:
         assert "service is active" in output
         assert "some log lines" in output
 
-    def test_not_authorized_yet_hint_when_myob_tokens_missing(self, mocker, capsys, tokens_files):
+    def test_not_authorised_yet_hint_when_myob_tokens_missing(self, mocker, capsys, tokens_files):
         mocker.patch.object(status, "_run", return_value=None)
 
         status.main()
 
         output = capsys.readouterr().out
-        assert "Not authorized yet" in output
+        assert "Not authorised yet" in output
         assert "mag oauth" in output
 
-    def test_authorized_when_myob_tokens_present(self, mocker, capsys, tokens_files):
+    def test_authorised_when_myob_tokens_present(self, mocker, capsys, tokens_files):
         myob_tokens_path, _, _ = tokens_files
         myob_tokens_path.write_text("{}")
         mocker.patch.object(status, "_run", return_value=None)
@@ -72,7 +72,7 @@ class TestMain:
 
         output = capsys.readouterr().out
         assert "tokens.json present" in output
-        assert "Not authorized yet" not in output
+        assert "Not authorised yet" not in output
 
     def test_token_counts_active_and_revoked(self, mocker, capsys, tokens_files):
         mocker.patch.object(status, "_run", return_value=None)

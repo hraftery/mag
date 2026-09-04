@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Persistent thin proxy: validates a mag bearer token's scope
-(token_store.authorize), then forwards the request to the real MYOB API
+(token_store.authorise), then forwards the request to the real MYOB API
 using the single MYOB OAuth grant in tokens.json (myob_client.raw_request),
 and relays MYOB's response back to the caller unmodified - no reshaping, so
 MYOB's own docs stay the source of truth for clients, and a MYOB schema
@@ -63,7 +63,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
         raw_token = auth[len("Bearer "):]
         
-        record = token_store.authorize(raw_token, self.command, myob_path)
+        record = token_store.authorise(raw_token, self.command, myob_path)
         if not record:
             self._respond(403, b'{"error": "forbidden"}', "application/json")
             audit("invalid-or-unscoped", self.command, myob_path, 403)

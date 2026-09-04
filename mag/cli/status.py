@@ -1,5 +1,5 @@
 """Show mag's current status: the mag-proxy service state, its recent
-logs, MYOB authorization, issued API tokens, and recent proxy activity.
+logs, MYOB authorisation, issued API tokens, and recent proxy activity.
 
 Meant to be run on the server, but degrades gracefully if run elsewhere.
 
@@ -49,11 +49,11 @@ def main():
     else:
         print(output or "(no logs yet)")
 
-    _section("MYOB authorization")
+    _section("MYOB authorisation")
     if os.path.exists(MYOB_TOKENS_FILE):
         print(f"tokens.json present ({MYOB_TOKENS_FILE})")
     else:
-        print(f"Not authorized yet - {MYOB_TOKENS_FILE} doesn't exist. Run `mag oauth`.")
+        print(f"Not authorised yet - {MYOB_TOKENS_FILE} doesn't exist. Run `mag oauth`.")
 
     _section("API tokens issued")
     records = token_store.load_records()

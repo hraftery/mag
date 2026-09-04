@@ -1,11 +1,11 @@
-"""One-shot MYOB OAuth2 authorization helper. Must be run ON THE SERVER.
+"""One-shot MYOB OAuth2 authorisation helper. Must be run ON THE SERVER.
 
 This helper starts a listener on 127.0.0.1:8787, which is where nginx
 proxies the redirect. It then prints the MYOB consent URL, which must be
 opened LOCALLY in a browser. Once consent is granted, the redirect will
 hit nginx via: https://<MAG_DOMAIN>/callback
 
-It then exchanges the returned authorization code for an access + refresh
+It then exchanges the returned authorisation code for an access + refresh
 token, and saves them to tokens.json.
 
 Run this once (or whenever the refresh token needs to be re-issued) — it
@@ -126,7 +126,7 @@ def make_handler(expected_state: str, client_id: str, client_secret: str, redire
                 return
             
             if not code:
-                self._respond(400, "No authorization code in callback.")
+                self._respond(400, "No authorisation code in callback.")
                 result["error"] = "missing_code"
                 return
             
@@ -184,7 +184,7 @@ def main():
     server.handle_request()  # blocks for exactly one request, then returns
     
     if "error" in result:
-        sys.exit(f"Authorization failed: {result['error']}")
+        sys.exit(f"Authorisation failed: {result['error']}")
     
     print("Tokens received. Saving...")
     myob_client.save_myob_tokens(result["tokens"])

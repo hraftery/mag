@@ -71,7 +71,7 @@ mag oauth
 
 `mag` will setup up the callback listener and ask you to visit the MYOB consent URL. Open that in a browser on your own machine and approve access. Note the consent URL requests *all* MYOB scopes upfront, and then applies individual client restrictions with its own scope scheme (see [Issuing tokens](#issuing_tokens)). That way if a client wants access to a particular endpoint, you can easily grant it using `mag` without having to go back through the OAuth procedure.
 
-When `mag` receives the consent callback, it will exchange the authorization code for tokens and save them to `tokens.json`.
+When `mag` receives the consent callback, it will exchange the authorisation code for tokens and save them to `tokens.json`.
 
 The saved tokens include a refresh token, which `mag` will automatically use if required. If the refresh token is every revoked or expires, run `mag oauth` again.
 
@@ -103,7 +103,7 @@ mag issue --name "MyToken" --scope "Sale/Invoice:GET" --scope "Contact:GET"
 
 Each `--scope` is a `PREFIX:METHOD1,METHOD2` string, e.g. `"Sale/Invoice:GET,POST"` where:
 
-- `PREFIX` is any path (or prefix thereof) in [MYOB's API namespace](https://developer.myob.com/api/myob-business-api/v2/). The scope grants access to endpoints that start with the `PREFIX`.
+- `PREFIX` is any path in [MYOB's API namespace](https://developer.myob.com/api/myob-business-api/v2/). The scope grants access to endpoints that start with the `PREFIX`.
 - `METHOD` is either `GET`, `POST` or `PUT`, which the [MYOB API](https://developer.myob.com/api/myob-business-api/api-overview/creating-updating/) uses to perform read, create and update actions respectively. This allows the scope to grant read access without necessarily granting write access.
 — see [Token scope schema](#token-scope-schema) for the full format.
 
@@ -224,20 +224,20 @@ sequenceDiagram
 
     Note over mag,MYOB: One MYOB OAuth grant, shared underneath every client
     Laptop->>mag: GET /proxy/Sale/Invoice<br/>Bearer laptop-explore-token
-    mag->>mag: authorize(): scope check
+    mag->>mag: authorise(): scope check
     mag->>MYOB: GET Sale/Invoice<br/>Bearer MYOB access token
     MYOB-->>mag: 200 OK
     mag-->>Laptop: 200 OK
 
     GAS->>mag: POST /proxy/Sale/Invoice/Item<br/>Bearer gas-invoice-token
-    mag->>mag: authorize(): scope check
+    mag->>mag: authorise(): scope check
     mag->>MYOB: POST Sale/Invoice/Item<br/>Bearer MYOB access token
     MYOB-->>mag: 201 Created
     mag-->>GAS: 201 Created
 
     Note over Laptop,mag: Same token reused later, for an unrelated call
     Laptop->>mag: GET /proxy/Contact/Supplier<br/>Bearer laptop-explore-token
-    mag->>mag: authorize(): scope check
+    mag->>mag: authorise(): scope check
     mag->>MYOB: GET Contact/Supplier<br/>Bearer MYOB access token
     MYOB-->>mag: 200 OK
     mag-->>Laptop: 200 OK
@@ -286,12 +286,12 @@ A token record:
 }
 ```
 
-Checked on every request by the entire authorization surface — small and
-disproportionately reviewed/tested, since it's the one thing standing
+Tokens are checked on every request, and the check is small and
+disproportionately reviewed/tested, since it's the one barrier
 between the single broad MYOB grant and any given caller:
 
 ```python
-def authorize(token: str, method: str, path: str) -> bool:
+def authorise(token: str, method: str, path: str) -> bool:
     record = lookup_by_hash(sha256(token))
     if not record or record.revoked:
         return False

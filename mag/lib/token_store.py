@@ -120,7 +120,7 @@ def _path_matches(path: str, prefix: str) -> bool:
     return path_parts[: len(prefix_parts)] == prefix_parts
 
 
-def authorize(raw_token: str, method: str, path: str) -> dict | None:
+def authorise(raw_token: str, method: str, path: str) -> dict | None:
     """Validate a bearer token against a request's method + path. Returns
     the token record on success (and records last_used_at), or None if the
     token is unknown, revoked, or lacks a matching scope."""

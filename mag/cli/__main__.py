@@ -10,7 +10,7 @@ Usage:
 
 Commands:
     status   Service state, logs, and recent activity  (status.py)
-    oauth    One-shot MYOB OAuth2 authorization        (oauth.py)
+    oauth    One-shot MYOB OAuth2 authorisation        (oauth.py)
     issue    Issue a new API token                     (tokens.py)
     list     List API tokens and their scopes          (tokens.py)
     edit     Add a scope to an existing API token      (tokens.py)

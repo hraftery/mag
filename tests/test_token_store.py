@@ -121,34 +121,34 @@ class TestAuthorize:
     def issued(self):
         return token_store.issue("laptop-explore", ["Sale/Invoice:GET,POST", "Contact:GET"])
 
-    def test_valid_token_matching_scope_authorizes(self, issued):
+    def test_valid_token_matching_scope_authorises(self, issued):
         raw_token, record = issued
-        result = token_store.authorize(raw_token, "GET", "Sale/Invoice")
+        result = token_store.authorise(raw_token, "GET", "Sale/Invoice")
         assert result is not None
         assert result["id"] == record["id"]
 
     def test_method_check_is_case_insensitive(self, issued):
         raw_token, _ = issued
-        assert token_store.authorize(raw_token, "get", "Sale/Invoice") is not None
+        assert token_store.authorise(raw_token, "get", "Sale/Invoice") is not None
 
     def test_records_last_used_at(self, issued):
         raw_token, record = issued
         assert token_store.find_by_id(record["id"])["last_used_at"] is None
-        token_store.authorize(raw_token, "GET", "Sale/Invoice")
+        token_store.authorise(raw_token, "GET", "Sale/Invoice")
         assert token_store.find_by_id(record["id"])["last_used_at"] is not None
 
     def test_unknown_token_rejected(self, issued):
-        assert token_store.authorize("mbt_bogus", "GET", "Sale/Invoice") is None
+        assert token_store.authorise("mbt_bogus", "GET", "Sale/Invoice") is None
 
     def test_wrong_method_rejected(self, issued):
         raw_token, _ = issued
-        assert token_store.authorize(raw_token, "DELETE", "Sale/Invoice") is None
+        assert token_store.authorise(raw_token, "DELETE", "Sale/Invoice") is None
 
     def test_wrong_path_rejected(self, issued):
         raw_token, _ = issued
-        assert token_store.authorize(raw_token, "GET", "Banking/SpendMoneyTxn") is None
+        assert token_store.authorise(raw_token, "GET", "Banking/SpendMoneyTxn") is None
 
     def test_revoked_token_rejected_even_with_matching_scope(self, issued):
         raw_token, record = issued
         token_store.revoke(record["id"])
-        assert token_store.authorize(raw_token, "GET", "Sale/Invoice") is None
+        assert token_store.authorise(raw_token, "GET", "Sale/Invoice") is None

@@ -192,7 +192,7 @@ class TestOauthCallbackHappyPath:
         )
 
         assert status == 200
-        assert "Authorization complete" in body
+        assert "Authorisation complete" in body
         assert system_exit is None  # the happy path returns normally, no sys.exit()
         mock_exchange.assert_called_once_with("cid", "csecret", "AUTHCODE", "https://mag.example.test/callback")
 
@@ -229,7 +229,7 @@ class TestOauthCallbackErrorPaths:
         status, body, mock_exchange, system_exit = run_main_and_hit_callback(mocker, servers, {"state": STATE})
 
         assert status == 400
-        assert "No authorization code" in body
+        assert "No authorisation code" in body
         assert "missing_code" in str(system_exit)
         mock_exchange.assert_not_called()
 
