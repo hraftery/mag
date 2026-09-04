@@ -56,20 +56,29 @@ def _config() -> tuple[str, str]:
         raise ProxyError("Set MAG_TOKEN to a token from `mag issue` (see README's \"Issuing tokens\").")
     return domain, token
 
+def _request(method: str, path: str, params: dict | None = None, body: dict | bytes | None = None) -> dict:
+    """Shared implementation for proxy_get/proxy_post/proxy_put: send
+    `method` to a MYOB API path through mag's proxy, using a mag-issued
+    bearer token. mag relays MYOB's response back unmodified, so the result
+    here is identical in shape to a direct call.
 
-def proxy_get(path: str, params: dict | None = None) -> dict:
-    """GET a MYOB API path (e.g. "/Sale/Invoice") through mag's proxy,
-    using a mag-issued bearer token. mag relays MYOB's response back
-    unmodified, so the result here is identical in shape to a direct call."""
+    A dict `body` is JSON-encoded automatically; pass already-encoded bytes
+    to send as-is. Either way, Content-Type is set to application/json,
+    matching every MYOB endpoint."""
     domain, token = _config()
     url = f"https://{domain}/proxy{path}"
     if params:
         url += "?" + urlencode(params)
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
-    request = Request(url, headers=headers)
+    data = body
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        if isinstance(body, dict):
+            data = json.dumps(body).encode()
+    request = Request(url, data=data, method=method, headers=headers)
     try:
         with urlopen(request, timeout=TIMEOUT) as response:
-            data = response.read()
+            resp_data = response.read()
     except HTTPError as e:
         # mag itself returns 401 (no/invalid bearer token) or 403 (token
         # doesn't have this path/method in scope) before ever reaching MYOB;
@@ -77,8 +86,22 @@ def proxy_get(path: str, params: dict | None = None) -> dict:
         raise ProxyError(f"API request to {path} failed ({e.code}): {e.read().decode(errors='replace')}") from e
     except URLError as e:
         raise ProxyError(f"API request to {path} failed: could not reach mag at {domain} ({e.reason})") from e
-    return json.loads(data.decode())
+    return json.loads(resp_data.decode()) if resp_data else {}
 
+def proxy_get(path: str, params: dict | None = None) -> dict:
+    """GET a MYOB API path (e.g. "/Sale/Invoice") through mag's proxy."""
+    return _request("GET", path, params=params)
+
+def proxy_post(path: str, body: dict | bytes | None = None, params: dict | None = None) -> dict:
+    """POST to a MYOB API path (e.g. "/Sale/Invoice") through mag's proxy -
+    typically to create a record. See _request() for how `body` is sent."""
+    return _request("POST", path, params=params, body=body)
+
+def proxy_put(path: str, body: dict | bytes | None = None, params: dict | None = None) -> dict:
+    """PUT to a MYOB API path (e.g. "/Sale/Invoice/<uid>") through mag's
+    proxy - typically to update a record. See _request() for how `body` is
+    sent."""
+    return _request("PUT", path, params=params, body=body)
 
 def proxy_get_all(path: str, params: dict | None = None, page_size: int = 1000) -> list:
     """GET every page of a MYOB list endpoint through mag's proxy (paging
