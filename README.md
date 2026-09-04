@@ -133,9 +133,10 @@ See "examples/" for some examples in Python of using the token and proxy address
 Tokens can also be viewed and edited with:
 
 ```bash
-mag list                           # audit what exists
-mag edit <id> --add-scope "..."    # widen, same secret
-mag revoke <id>                    # instant, no MYOB-side effect
+mag list                            # audit what exists
+mag edit <id> --add-scope "..."     # widen, same secret
+mag edit <id> --remove-scope "..."  # narrow, same secret
+mag revoke <id>                     # instant, no MYOB-side effect
 ```
 
 ### Checking system status
@@ -319,8 +320,10 @@ Other properties of the scheme:
   client itself. A client only ever discovers its own scope implicitly, via
   which calls succeed.
 - **Scopes are mutable independently of the token secret** —
-  `mag edit <id> --add-scope "Sale/Invoice:POST"` changes what a token
-  can do without rotating the credential itself. Revocation is a separate,
+  `mag edit <id> --add-scope "Sale/Invoice:POST"` / `--remove-scope "..."`
+  change what a token can do without rotating the credential itself.
+  Removal drops one whole scope entry (it must match an existing one exactly),
+  and a token can end up with zero scopes. Revocation is a separate,
   one-field flip (`revoked: true`), with no effect on MYOB's own grant.
 - **`last_used_at` supports pruning stale access** before it's ever an
   incident — a token nobody's used in months is easy to spot and revoke

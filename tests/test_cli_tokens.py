@@ -78,6 +78,47 @@ class TestEdit:
         scopes = token_store.find_by_id(token_id)["scopes"]
         assert len(scopes) == 2
 
+    def test_removes_matching_scope(self, mocker, capsys):
+        run(mocker, capsys, "issue", "--name", "x", "--scope", "Sale/Invoice:GET", "--scope", "Contact:GET")
+        token_id = token_store.load_records()[0]["id"]
+
+        output = run(mocker, capsys, "edit", token_id, "--remove-scope", "Contact:GET")
+
+        assert f"Removed scope Contact:GET from {token_id}" in output
+        scopes = token_store.find_by_id(token_id)["scopes"]
+        assert scopes == [{"prefix": "Sale/Invoice", "methods": ["GET"]}]
+
+    def test_remove_scope_can_leave_zero_scopes(self, mocker, capsys):
+        run(mocker, capsys, "issue", "--name", "x", "--scope", "Sale/Invoice:GET")
+        token_id = token_store.load_records()[0]["id"]
+
+        run(mocker, capsys, "edit", token_id, "--remove-scope", "Sale/Invoice:GET")
+
+        assert token_store.find_by_id(token_id)["scopes"] == []
+
+    def test_remove_scope_no_exact_match_exits_cleanly(self, mocker, capsys):
+        run(mocker, capsys, "issue", "--name", "x", "--scope", "Sale/Invoice:GET,POST")
+        token_id = token_store.load_records()[0]["id"]
+
+        with pytest.raises(SystemExit):
+            run(mocker, capsys, "edit", token_id, "--remove-scope", "Sale/Invoice:GET")
+
+    def test_add_and_remove_scope_together(self, mocker, capsys):
+        run(mocker, capsys, "issue", "--name", "x", "--scope", "Sale/Invoice:GET")
+        token_id = token_store.load_records()[0]["id"]
+
+        run(mocker, capsys, "edit", token_id, "--add-scope", "Contact:GET", "--remove-scope", "Sale/Invoice:GET")
+
+        assert token_store.find_by_id(token_id)["scopes"] == [{"prefix": "Contact", "methods": ["GET"]}]
+
+    def test_neither_flag_exits_cleanly(self, mocker, capsys):
+        run(mocker, capsys, "issue", "--name", "x", "--scope", "Sale/Invoice:GET")
+        token_id = token_store.load_records()[0]["id"]
+
+        with pytest.raises(SystemExit) as excinfo:
+            run(mocker, capsys, "edit", token_id)
+        assert "Specify --add-scope and/or --remove-scope" in str(excinfo.value)
+
     def test_unknown_id_exits(self, mocker, capsys):
         with pytest.raises(SystemExit) as excinfo:
             run(mocker, capsys, "edit", "deadbeef", "--add-scope", "Contact:GET")

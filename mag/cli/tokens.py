@@ -14,13 +14,14 @@ Usage:
               --scope "Contact:GET"
     mag list
     mag edit 7f9a2e1c --add-scope "Sale/Invoice:POST"
+    mag edit 7f9a2e1c --remove-scope "Sale/Invoice:GET,POST"
     mag revoke 7f9a2e1c
 """
 
 import argparse
 import sys
 
-from mag.lib.token_store import add_scope, find_by_id, issue, load_records, revoke
+from mag.lib.token_store import add_scope, find_by_id, issue, load_records, remove_scope, revoke
 
 
 def cmd_issue(args):
@@ -45,7 +46,7 @@ def cmd_list(args):
 
     for r in records:
         status = "REVOKED" if r["revoked"] else "active"
-        print(f"{r['id']}  {r['name']:<24} [{status}]")
+        print(f"id: {r['id']}  name: {r['name']:<24} [{status}]")
         print(f"    scopes:     {_format_scopes(r['scopes'])}")
         print(f"    created:    {r['created_at']}")
         print(f"    last used:  {r['last_used_at'] or 'never'}")
@@ -62,13 +63,18 @@ def cmd_edit(args):
         sys.exit(f"No token with id {args.token_id}")
     if record["revoked"]:
         sys.exit(f"{args.token_id} ({record['name']}) is revoked - issue a new token instead.")
+    if not args.add_scope and not args.remove_scope:
+        sys.exit("Specify --add-scope and/or --remove-scope.")
 
     try:
-        add_scope(args.token_id, args.add_scope)
+        if args.add_scope:
+            add_scope(args.token_id, args.add_scope)
+            print(f"Added scope {args.add_scope} to {args.token_id} ({record['name']}).")
+        if args.remove_scope:
+            remove_scope(args.token_id, args.remove_scope)
+            print(f"Removed scope {args.remove_scope} from {args.token_id} ({record['name']}).")
     except ValueError as e:
         sys.exit(str(e))
-
-    print(f"Added scope {args.add_scope} to {args.token_id} ({record['name']}).")
 
 
 def cmd_revoke(args):
@@ -92,7 +98,7 @@ def main():
         prog="mag", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
-
+    
     p_issue = subparsers.add_parser("issue", help="Issue a new token")
     p_issue.add_argument("--name", required=True, help='Human-readable purpose, e.g. "gas-invoice-create"')
     p_issue.add_argument(
@@ -103,25 +109,26 @@ def main():
         help="e.g. Sale/Invoice:GET,POST - repeatable for multiple scopes",
     )
     p_issue.set_defaults(func=cmd_issue)
-
+    
     p_list = subparsers.add_parser("list", help="List tokens and their scopes")
     p_list.set_defaults(func=cmd_list)
-
+    
     p_edit = subparsers.add_parser(
         "edit",
-        help="Add a scope to an existing token, without rotating its secret",
-        description="Add a scope to an existing token, without rotating its secret or "
-        "affecting its other scopes. To narrow a token, revoke it and issue a "
-        "replacement instead - scopes can only be added here, not removed.",
+        help="Add and/or remove a scope on an existing token, without rotating its secret",
+        description="Add a new scope to or remove an existing one from a token. --add-scope and"
+        "--remove-scope both require a scope to be specified like in `mag issue --scope`."
+        "Specify the token to edit by id (see `mag list`). Its secret is not affected.",
     )
     p_edit.add_argument("token_id")
-    p_edit.add_argument("--add-scope", required=True, metavar="PREFIX:METHODS")
+    p_edit.add_argument("--add-scope", metavar="PREFIX:METHODS")
+    p_edit.add_argument("--remove-scope", metavar="PREFIX:METHODS")
     p_edit.set_defaults(func=cmd_edit)
-
+    
     p_revoke = subparsers.add_parser("revoke", help="Revoke a token by id")
     p_revoke.add_argument("token_id")
     p_revoke.set_defaults(func=cmd_revoke)
-
+    
     args = parser.parse_args()
     args.func(args)
 

@@ -108,6 +108,29 @@ def add_scope(token_id: str, scope_spec: str) -> bool:
     return True
 
 
+def remove_scope(token_id: str, scope_spec: str) -> bool:
+    """Remove one whole scope entry from a token. scope_spec must exactly
+    match an existing entry's prefix and full method set (methods order
+    doesn't matter) - see `mag list` for the exact strings to pass. There's
+    no partial removal of individual methods within an entry; narrow one of
+    those by removing it whole and adding back what should remain. A token
+    can end up with zero scopes (it just authorises nothing - use `revoke`
+    to invalidate the token itself)."""
+    records = load_records()
+    record = next((r for r in records if r["id"] == token_id), None)
+    if not record:
+        return False
+
+    target = parse_scope(scope_spec)
+    for i, scope in enumerate(record["scopes"]):
+        if scope["prefix"] == target["prefix"] and set(scope["methods"]) == set(target["methods"]):
+            del record["scopes"][i]
+            save_records(records)
+            return True
+
+    raise ValueError(f"No scope matching {scope_spec!r} on token {token_id} - see `mag list`.")
+
+
 def _path_matches(path: str, prefix: str) -> bool:
     """Segment-boundary match: "Sale/Invoice" matches "Sale/Invoice/Item" but
     NOT "Sale/InvoiceTemplate" - a naive startswith() would wrongly allow

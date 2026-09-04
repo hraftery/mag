@@ -90,6 +90,41 @@ class TestIssueFindRevokeEditRoundtrip:
         with pytest.raises(ValueError):
             token_store.add_scope(record["id"], "no-colon-here")
 
+    def test_remove_scope_removes_matching_entry(self):
+        _, record = token_store.issue("a", ["Contact:GET", "Sale/Invoice:GET,POST"])
+        assert token_store.remove_scope(record["id"], "Sale/Invoice:GET,POST")
+        scopes = token_store.find_by_id(record["id"])["scopes"]
+        assert scopes == [{"prefix": "Contact", "methods": ["GET"]}]
+
+    def test_remove_scope_methods_order_insensitive(self):
+        _, record = token_store.issue("a", ["Sale/Invoice:GET,POST"])
+        assert token_store.remove_scope(record["id"], "Sale/Invoice:POST,GET")
+        assert token_store.find_by_id(record["id"])["scopes"] == []
+
+    def test_remove_scope_can_leave_zero_scopes(self):
+        _, record = token_store.issue("a", ["Contact:GET"])
+        assert token_store.remove_scope(record["id"], "Contact:GET")
+        assert token_store.find_by_id(record["id"])["scopes"] == []
+
+    def test_remove_scope_unknown_id_returns_false(self):
+        assert not token_store.remove_scope("nonexistent", "Contact:GET")
+
+    def test_remove_scope_no_exact_match_raises(self):
+        # Same prefix, but a narrower method set than what's actually on the
+        # token - no partial removal, so this must be rejected, not truncate
+        # the existing entry down to GET.
+        _, record = token_store.issue("a", ["Sale/Invoice:GET,POST"])
+        with pytest.raises(ValueError):
+            token_store.remove_scope(record["id"], "Sale/Invoice:GET")
+        assert token_store.find_by_id(record["id"])["scopes"] == [
+            {"prefix": "Sale/Invoice", "methods": ["GET", "POST"]}
+        ]
+
+    def test_remove_scope_invalid_spec_raises(self):
+        _, record = token_store.issue("a", ["Contact:GET"])
+        with pytest.raises(ValueError):
+            token_store.remove_scope(record["id"], "no-colon-here")
+
     def test_saved_file_permissions_owner_and_group(self):
         token_store.issue("a", ["Contact:GET"])
         mode = os.stat(token_store.MAG_TOKENS_FILE).st_mode & 0o777
