@@ -8,13 +8,7 @@ Must be installed on an Internet accessible server.
 
 Steps to get `mag` running from scratch, are as follows.
 
-### 1. Get MYOB API credentials
-
-Register an app in the MYOB Developer Centre (see MYOB's [OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719)). Enable these scopes: `sme-company-file`, `sme-contacts-customer`, `sme-contacts-supplier`, `sme-sales`, `sme-banking`.
-
-Note the `MYOB_CLIENT_ID` / `MYOB_CLIENT_SECRET` pair for use in step 3. 
-
-### 2. Point a (sub)domain at the server and get a TLS cert
+### 1. Point a (sub)domain at your server and get a TLS cert
 
 MYOB's OAuth2 flow requires a registered HTTPS redirect URI. Register a domain or add a subdomain and ensure it resolves to your server.
 
@@ -28,6 +22,14 @@ sudo certbot certonly --nginx -d <YOUR_DOMAIN>
 
 - `certonly` obtains the certificate without adding a site configuration for it. The configuration will be generated in the next step.
 - `--nginx` uses nginx itself to serve the certification verification challenge.
+
+### 2. Get MYOB API credentials
+
+Register an app in the MYOB Developer Centre (see MYOB's [OAuth2.0 Authentication Guide](https://apisupport.myob.com/hc/en-us/articles/13065472856719)). Give it any name you like. For the "Redirect URL", you must point it back to `mag`'s "/callback" endpoint on your server:
+
+- Redirect URL: `https://<YOUR_DOMAIN>/callback`
+
+Note the `MYOB_CLIENT_ID` (or "key") / `MYOB_CLIENT_SECRET` pair that is generated for the next step. 
 
 ### 3. Install mag
 
@@ -45,7 +47,7 @@ sudo ./setup.sh
 [Why systemd](#why-systemd)) using [mag-proxy.service](templates/mag-proxy.service) as a template;
 - and install a global `mag` CLI wrapper using [mag](templates/mag) as a template.
 
-It also prompts for values required to create or update `.env` (based on [`.env.example`](.env.example)). That includes your MYOB credentials from step 1, and the domain this server is reachable at.
+It also prompts for values required to create or update `.env` (based on [`.env.example`](.env.example)). That includes your MYOB credentials from step 2, and the domain this server is reachable at.
 
 `.env` is the key to ensure `mag` can be configured and deployed without a separate secrets store, and the various templates can be instantiated automatically.
 
@@ -54,16 +56,17 @@ a fresh login or run `newgrp mag` before continuing.
 
 ### 4. Authorize `mag` with MYOB
 
-`mag oauth` is a one-shot command that listens for the redirect
-registered above, exchanges the authorization code for tokens, and saves them to `tokens.json`. Run it on the server, once, now that `.env` is populated:
+You're now ready to authorize the app and grant it a token:
 
 ```bash
 mag oauth
 ```
 
-It will show the MYOB consent URL. Open that in a browser on your own machine and approve access. Your browser's redirect hits nginx on the server, which proxies it to `mag oauth`'s listener, completing the exchange.
+`mag` will setup up the callback listener and ask you to visit the MYOB consent URL. Open that in a browser on your own machine and approve access. Note the consent URL requests *all* MYOB scopes upfront, and then applies individual client restrictions with its own scope scheme (see [Issuing tokens](#issuing_tokens)). That way if a client wants access to a particular endpoint, you can easily grant it using `mag` without having to go back through the OAuth procedure.
 
-Run it once to seed a refresh token. After that, tokens are read from `tokens.json` without needing this step to be repeated, unless the refresh token is revoked or expires. New tokens are automatically picked up by `mag-proxy.service`.
+When `mag` receives the consent callback, it will exchange the authorization code for tokens and save them to `tokens.json`.
+
+The saved tokens include a refresh token, which `mag` will automatically use if required. If the refresh token is every revoked or expires, run `mag oauth` again.
 
 ### 5. Confirm setup
 
