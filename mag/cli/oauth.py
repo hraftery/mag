@@ -130,12 +130,13 @@ def make_handler(expected_state: str, client_id: str, client_secret: str, redire
                 result["error"] = "missing_code"
                 return
             
+            print("Callback received. Exchanging code for tokens...")
             tokens = exchange_code(client_id, client_secret, code, redirect_uri)
             # Capture businessId/businessName from the redirect. See prompt=consent.
             tokens["businessId"] = query.get("businessId", [None])[0]
             tokens["businessName"] = query.get("businessName", [None])[0]
             result["tokens"] = tokens
-            self._respond(200, "Authorization complete. You can close this tab.")
+            self._respond(200, "Authorisation complete. You can close this tab.")
         
         def _respond(self, status: int, message: str):
             self.send_response(status)
@@ -183,9 +184,12 @@ def main():
     if "error" in result:
         sys.exit(f"Authorization failed: {result['error']}")
     
+    print("Tokens received. Saving...")
     myob_client.save_myob_tokens(result["tokens"])
-
+    
+    print("")
     print(f"Saved tokens to {myob_client.MYOB_TOKENS_FILE}")
+    print("OAuth procedure successful. mag is now authorised to access MYOB.")
 
 if __name__ == "__main__":
     sys.exit("Run this via: mag oauth (see setup.sh)")
