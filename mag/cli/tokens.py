@@ -37,7 +37,6 @@ def cmd_issue(args):
     print("Raw token (shown once - save it now):")
     print(raw_token) # Never stored
 
-
 def cmd_list(args):
     records = load_records()
     if not records:
@@ -46,16 +45,14 @@ def cmd_list(args):
 
     for r in records:
         status = "REVOKED" if r["revoked"] else "active"
-        print(f"id: {r['id']}  name: {r['name']:<24} [{status}]")
+        print(f"id: {r['id']}  name: {r['name']:<20} [{status}]")
         print(f"    scopes:     {_format_scopes(r['scopes'])}")
         print(f"    created:    {r['created_at']}")
         print(f"    last used:  {r['last_used_at'] or 'never'}")
         print()
 
-
 def _format_scopes(scopes: list[dict]) -> str:
     return "; ".join(f"{s['prefix'] or '*'}:{','.join(s['methods'])}" for s in scopes)
-
 
 def cmd_edit(args):
     record = find_by_id(args.token_id)
@@ -76,7 +73,6 @@ def cmd_edit(args):
     except ValueError as e:
         sys.exit(str(e))
 
-
 def cmd_revoke(args):
     record = find_by_id(args.token_id)
     if not record:
@@ -88,7 +84,6 @@ def cmd_revoke(args):
 
     revoke(args.token_id)
     print(f"Revoked {args.token_id} ({record['name']}).")
-
 
 def main():
     # Without "prog", argparse infers it from how the process was actually launched

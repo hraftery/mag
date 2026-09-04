@@ -116,7 +116,7 @@ Multiple tokens with different scopes are supported and encouraged. Use a descri
 Once a token is issued, a client can access make MYOB API requests by:
 
 - passing the token as a [Bearer Token header](https://reqbin.com/req/adf8b77i/authorization-bearer-header)
-- and appending the MYOB API endpoint to the mag proxy address: `https//<MAG_DOMAIN>/proxy/`.
+- and appending the MYOB API endpoint to the mag proxy address: `https://<MAG_DOMAIN>/proxy/`.
 
 For example, `curl` can be used to make a simple `GET` request to the `Company` endpoint:
 
@@ -126,7 +126,9 @@ curl -H "Authorization: Bearer <TOKEN>" https://<MAG_DOMAIN>/proxy/Company
 
 `mag` forwards the request to MYOB and relays the response back unmodified (see [Architecture](#architecture)). Every request is appended to `proxy_audit.log`.
 
-See "examples/" for some examples in Python of using the token and proxy address to query the MYOB API.
+If `mag` could *not* forward the request, it generates its own response and adds a `X-Mag-Error: true` header so you know it didn't come from MYOB. This can happen for a missing/invalid token (401), an unscoped path (403), an unrecognised path (404), or MYOB being unreachable (502). The header distinguishes it from MYOB returning that same status code for its own reasons (eg. an expired MYOB grant or a company-file permission issue).
+
+See "examples/" for some examples in Python of using the token and proxy address to query the MYOB API. You can `import _proxy_client.py` from that folder and use the request functions within to create your own examples.
 
 ### Editing tokens
 

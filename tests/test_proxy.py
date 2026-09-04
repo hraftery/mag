@@ -65,9 +65,10 @@ def audit_log_lines():
 
 class TestAuthAndRouting:
     def test_missing_authorisation_header_401(self, running_server):
-        status, _, body = do_request(running_server, "GET", "/proxy/Sale/Invoice")
+        status, headers, body = do_request(running_server, "GET", "/proxy/Sale/Invoice")
         assert status == 401
         assert json.loads(body) == {"error": "missing bearer token"}
+        assert headers[proxy.MAG_ERROR_HEADER] == "true"
         assert "- GET /Sale/Invoice -> 401" in audit_log_lines()[-1]
 
     def test_non_bearer_authorisation_401(self, running_server):
@@ -77,17 +78,19 @@ class TestAuthAndRouting:
         assert status == 401
 
     def test_unmatched_path_prefix_404(self, running_server):
-        status, _, body = do_request(running_server, "GET", "/not-proxy/x")
+        status, headers, body = do_request(running_server, "GET", "/not-proxy/x")
         assert status == 404
         assert json.loads(body) == {"error": "not found"}
+        assert headers[proxy.MAG_ERROR_HEADER] == "true"
 
     def test_invalid_or_unscoped_token_403(self, running_server, mocker):
         mocker.patch.object(token_store, "authorise", return_value=None)
-        status, _, body = do_request(
+        status, headers, body = do_request(
             running_server, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer bogus"}
         )
         assert status == 403
         assert json.loads(body) == {"error": "forbidden"}
+        assert headers[proxy.MAG_ERROR_HEADER] == "true"
         assert "invalid-or-unscoped GET /Sale/Invoice -> 403" in audit_log_lines()[-1]
 
     def test_authorise_called_with_method_and_myob_path(self, running_server, mocker):
@@ -113,6 +116,7 @@ class TestForwarding:
         assert status == 201
         assert headers["Content-Type"] == "application/json"
         assert body == b'{"UID":"abc"}'
+        assert proxy.MAG_ERROR_HEADER not in headers  # MYOB's own response, relayed unmodified
         assert "laptop-explore POST /Sale/Invoice -> 201" in audit_log_lines()[-1]
 
     def test_body_and_content_type_forwarded_to_myob_client(self, authorised, mocker):
@@ -154,25 +158,27 @@ class TestForwarding:
     def test_upstream_unreachable_502(self, authorised, mocker):
         mocker.patch.object(myob_client, "raw_request", side_effect=myob_client.UpstreamUnreachable("timed out"))
 
-        status, _, body = do_request(authorised, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
+        status, headers, body = do_request(authorised, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
 
         assert status == 502
         assert "MYOB unreachable" in json.loads(body)["error"]
+        assert headers[proxy.MAG_ERROR_HEADER] == "true"
         assert "laptop-explore GET /Sale/Invoice -> 502" in audit_log_lines()[-1]
 
     def test_myob_error_response_relayed_verbatim(self, authorised, mocker):
         # MYOB's own error bodies pass through unmodified - the proxy must
-        # not reshape or swallow them.
+        # not reshape, swallow, or tag them as if mag generated them.
         mocker.patch.object(
             myob_client, "raw_request", return_value=(422, "application/json", b'{"Errors":[{"Message":"bad"}]}')
         )
 
-        status, _, body = do_request(
+        status, headers, body = do_request(
             authorised, "POST", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"}, body=b"{}"
         )
 
         assert status == 422
         assert json.loads(body) == {"Errors": [{"Message": "bad"}]}
+        assert proxy.MAG_ERROR_HEADER not in headers  # even a MYOB *error* isn't mag's own
 
     @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
     def test_all_four_methods_dispatch(self, authorised, mocker, method):
