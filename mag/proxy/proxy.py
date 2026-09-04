@@ -55,27 +55,27 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._respond(404, b'{"error": "not found"}', "application/json")
             return
         myob_path = "/" + parsed.path[len(PATH_PREFIX):]
-
+        
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             self._respond(401, b'{"error": "missing bearer token"}', "application/json")
             audit("-", self.command, myob_path, 401)
             return
         raw_token = auth[len("Bearer "):]
-
+        
         record = token_store.authorize(raw_token, self.command, myob_path)
         if not record:
             self._respond(403, b'{"error": "forbidden"}', "application/json")
             audit("invalid-or-unscoped", self.command, myob_path, 403)
             return
-
+        
         length = int(self.headers.get("Content-Length", 0) or 0)
         body = self.rfile.read(length) if length else None
         content_type = self.headers.get("Content-Type")
         # $filter/$orderby/$top/$skip are always single-valued in MYOB's API,
         # so a plain dict (rather than preserving repeated keys) is fine here.
         query = dict(parse_qsl(parsed.query)) if parsed.query else None
-
+        
         try:
             status, resp_ctype, data = myob_client.raw_request(
                 self.command, myob_path, params=query, body=body, content_type=content_type
@@ -84,7 +84,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._respond(502, json.dumps({"error": f"MYOB unreachable: {e}"}).encode(), "application/json")
             audit(record["name"], self.command, myob_path, 502)
             return
-
+        
         self._respond(status, data, resp_ctype or "application/json")
         audit(record["name"], self.command, myob_path, status)
 

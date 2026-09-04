@@ -94,19 +94,21 @@ mag issue --name "MyToken" \
 
 Each `--scope` is a `PREFIX:METHOD1,METHOD2` string, e.g. `"Sale/Invoice:GET,POST"` — see [Token scope schema](#token-scope-schema) for the full format.
 
-Multiple tokens with different scopes are supported and encouraged. Use a descriptive name to identify them, and see [the list of scopes](https://developer.myob.com/api/myob-business-api/api-overview/granular_data_scopes/) to figure out which ones you need.
+Multiple tokens with different scopes are supported and encouraged. Use a descriptive name to identify them. A mag scope's prefix can be any path from MYOB's own API namespace — see the [MYOB Business API reference](https://developer.myob.com/api/myob-business-api/v2/) to find the one you need. (Don't confuse this with MYOB's own `sme-*` OAuth scopes from [Setup step 1](#1-get-myob-api-credentials) — those are broader, app-level, and already granted once during setup; a mag scope narrows what a given *client* can do within that grant.)
 
 Note client tokens are issued without contact with the MYOB API nor the `mag` proxy.
 
 ### Using a token
 
-A client can then call the gateway directly with that token:
+A client can then access the proxy directly with that token:
 
 ```bash
 curl -H "Authorization: Bearer <issued token>" https://<MAG_DOMAIN>/proxy/Sale/Invoice
 ```
 
 `mag` forwards the request to MYOB and relays the response back unmodified - see [Architecture](#architecture). Every request is appended to `proxy_audit.log`.
+
+See "examples/" for some examples in Python of using the token and proxy to query the MYOB API.
 
 ### Editing tokens
 
@@ -187,7 +189,7 @@ Run a single file or test with `pytest tests/test_token_store.py` or
 ### Layout
 
 - [`mag/`](mag/) - a plain, uninstalled Python package (no pip/venv requirements)
-  - [`mag/proxy/`](mag/proxy/) - the persistent application: `proxy.py` is a service that runs on the server and provides the gateway to the MYOB API.
+  - [`mag/proxy/`](mag/proxy/) - the persistent application: `proxy.py` is a service that runs on the server and proxies communication with the MYOB API.
   - [`mag/lib/`](mag/lib/) - shared functionality.
   - [`mag/cli/`](mag/cli/) - a command-line interface to perform individual tasks.
 - [`examples/`](examples/) - standalone scripts showing how a client can use the mag proxy, with a `mag issue`d token. This is the pattern any real client (GAS, a script, Postman) would follow.
