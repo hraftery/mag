@@ -213,7 +213,7 @@ chmod 755 /usr/local/bin/mag
 
 echo "==> done."
 if [[ ! -f "$MAG_HOME/var/tokens.json" ]]; then
-    echo "NEXT STEP: perform authorisation with MYOB.
+    echo "NEXT STEP: perform authorisation with MYOB."
     echo "           Run 'newgrp $MAG_GROUP' to pick up the new group membership,"
     echo "           then run 'mag oauth' to authorise with MYOB."
 fi
