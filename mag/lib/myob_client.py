@@ -113,14 +113,16 @@ def raw_request(
     params: dict | None = None,
     body: bytes | None = None,
     content_type: str | None = None,
-) -> tuple[int, str | None, bytes]:
+) -> tuple[int, list[tuple[str, str]], bytes]:
     """Forward an arbitrary request to the AccountRight API for the business
     file in tokens.json, refreshing the access token once on a 401.
 
     Unlike api_get(), MYOB's own error responses are returned rather than
-    raised, so a caller (the proxy server) can relay them verbatim - it's
-    not this function's job to decide what's a "failure" for the caller.
-    Only a genuinely unreachable upstream raises (UpstreamUnreachable).
+    raised, so a caller (the proxy server) can relay them verbatim -
+    headers included, not just status and body - it's not this function's
+    job to decide what's a "failure" for the caller, or which of MYOB's
+    headers might matter to one. Only a genuinely unreachable upstream
+    raises (UpstreamUnreachable).
 
     That includes local not-ready-yet conditions (no MYOB_CLIENT_ID/SECRET,
     no tokens.json yet, one missing businessId, or MYOB itself rejecting a
@@ -147,26 +149,26 @@ def raw_request(
         if params:
             url += "?" + urlencode(params)
 
-        def attempt(access_token: str) -> tuple[int, str | None, bytes]:
+        def attempt(access_token: str) -> tuple[int, list[tuple[str, str]], bytes]:
             headers = _request_headers(access_token, client_id)
             if body is not None:
                 headers["Content-Type"] = content_type or "application/json"
             request = Request(url, data=body, method=method, headers=headers)
             try:
                 with urlopen(request, timeout=TIMEOUT) as response:
-                    return response.status, response.headers.get("Content-Type"), response.read()
+                    return response.status, list(response.headers.items()), response.read()
             except HTTPError as e:
-                return e.code, e.headers.get("Content-Type"), e.read()
+                return e.code, list(e.headers.items()), e.read()
             except URLError as e:
                 raise UpstreamUnreachable(str(e.reason))
 
-        status, ctype, data = attempt(tokens["access_token"])
+        status, resp_headers, data = attempt(tokens["access_token"])
         if status == 401:
             tokens = refresh_myob_tokens(tokens, client_id, client_secret)
-            status, ctype, data = attempt(tokens["access_token"])
-        return status, ctype, data
+            status, resp_headers, data = attempt(tokens["access_token"])
+        return status, resp_headers, data
     except SystemExit as e:
-        return 503, "application/json", json.dumps({"error": str(e)}).encode()
+        return 503, [("Content-Type", "application/json")], json.dumps({"error": str(e)}).encode()
 
 def api_get(path: str, params: dict | None = None) -> dict:
     """GET an AccountRight API path (e.g. "/Sale/Invoice") for the business

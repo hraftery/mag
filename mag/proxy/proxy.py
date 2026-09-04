@@ -41,6 +41,26 @@ AUDIT_LOG = os.path.join(DATA_DIR, "proxy_audit.log")
 # header, since mag never modifies those responses.
 MAG_ERROR_HEADER = "X-Mag-Error"
 
+# Hop-by-hop headers (RFC 7230 §6.1) describe *this* connection, not MYOB's
+# response - meaningless (or wrong) to copy through to a different one.
+# Content-Length is excluded too: it's recomputed from the actual outgoing
+# body below, not copied from MYOB's.
+_EXCLUDED_RESPONSE_HEADERS = frozenset({
+    "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+    "te", "trailer", "transfer-encoding", "upgrade", "content-length",
+})
+
+
+def _filter_relay_headers(headers: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """MYOB's response headers, minus the hop-by-hop/framing ones above -
+    everything else (rate-limit headers, ETag, whatever else MYOB sends)
+    passes through untouched, since it's not this proxy's job to guess
+    which of MYOB's headers might matter to a given client."""
+    relayed = [(name, value) for name, value in headers if name.lower() not in _EXCLUDED_RESPONSE_HEADERS]
+    if not any(name.lower() == "content-type" for name, _ in relayed):
+        relayed.append(("Content-Type", "application/json"))
+    return relayed
+
 
 def audit(token_name: str, method: str, path: str, status: int) -> None:
     line = f"{datetime.now(timezone.utc).isoformat()} {token_name} {method} {path} -> {status}\n"
@@ -61,65 +81,66 @@ class ProxyHandler(BaseHTTPRequestHandler):
             self._respond_error(404, "not found")
             return
         myob_path = "/" + parsed.path[len(PATH_PREFIX):]
-
+        
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
             self._respond_error(401, "missing bearer token")
             audit("-", self.command, myob_path, 401)
             return
         raw_token = auth[len("Bearer "):]
-
+        
         record = token_store.authorise(raw_token, self.command, myob_path)
         if not record:
             self._respond_error(403, "forbidden")
             audit("invalid-or-unscoped", self.command, myob_path, 403)
             return
-
+        
         length = int(self.headers.get("Content-Length", 0) or 0)
         body = self.rfile.read(length) if length else None
         content_type = self.headers.get("Content-Type")
         # $filter/$orderby/$top/$skip are always single-valued in MYOB's API,
         # so a plain dict (rather than preserving repeated keys) is fine here.
         query = dict(parse_qsl(parsed.query)) if parsed.query else None
-
+        
         try:
-            status, resp_ctype, data = myob_client.raw_request(
+            status, resp_headers, data = myob_client.raw_request(
                 self.command, myob_path, params=query, body=body, content_type=content_type
             )
         except myob_client.UpstreamUnreachable as e:
             self._respond_error(502, f"MYOB unreachable: {e}")
             audit(record["name"], self.command, myob_path, 502)
             return
-
-        self._respond(status, data, resp_ctype or "application/json")
+        
+        self._respond(status, data, _filter_relay_headers(resp_headers))
         audit(record["name"], self.command, myob_path, status)
-
-    def _respond(self, status: int, body: bytes, content_type: str, mag_error: bool = False):
+    
+    def _respond(self, status: int, body: bytes, headers: list[tuple[str, str]], mag_error: bool = False):
         self.send_response(status)
-        self.send_header("Content-Type", content_type)
+        for name, value in headers:
+            self.send_header(name, value)
         self.send_header("Content-Length", str(len(body)))
         if mag_error:
             self.send_header(MAG_ERROR_HEADER, "true")
         self.end_headers()
         self.wfile.write(body)
-
+    
     def _respond_error(self, status: int, message: str):
         """Shorthand for the mag-generated {"error": ...} responses above -
         tagged with MAG_ERROR_HEADER, unlike the MYOB relay in _handle()."""
-        self._respond(status, json.dumps({"error": message}).encode(), "application/json", mag_error=True)
-
+        self._respond(status, json.dumps({"error": message}).encode(), [("Content-Type", "application/json")], mag_error=True)
+    
     def do_GET(self):
         self._handle()
-
+    
     def do_POST(self):
         self._handle()
-
+    
     def do_PUT(self):
         self._handle()
-
+    
     def do_DELETE(self):
         self._handle()
-
+    
     def log_message(self, format, *args):
         pass  # audit() above is the real log; keep stdout clean
 
@@ -127,7 +148,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
 def main():
     if not os.environ.get("MYOB_CLIENT_ID") or not os.environ.get("MYOB_CLIENT_SECRET"):
         sys.exit("Set MYOB_CLIENT_ID and MYOB_CLIENT_SECRET environment variables.")
-
+    
     server = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), ProxyHandler)
     print(f"mag proxy listening on {LISTEN_HOST}:{LISTEN_PORT}{PATH_PREFIX}")
     try:

@@ -19,14 +19,14 @@ def http_error(code, body: bytes = b"", content_type="application/json"):
     return HTTPError(url="https://api.myob.com/x", code=code, msg="err", hdrs=hdrs, fp=io.BytesIO(body))
 
 
-def fake_response(body: bytes, content_type="application/json", status=200):
+def fake_response(body: bytes, content_type="application/json", status=200, extra_headers=None):
     """A context-manager-compatible stand-in for urlopen()'s return value."""
     resp = MagicMock()
     resp.__enter__.return_value = resp
     resp.__exit__.return_value = False
     resp.read.return_value = body
     resp.status = status
-    resp.headers.get.return_value = content_type
+    resp.headers.items.return_value = [("Content-Type", content_type), *(extra_headers or [])]
     return resp
 
 
@@ -185,17 +185,31 @@ class TestRawRequest:
             return_value=fake_response(b'{"ok":true}', content_type="application/json", status=201),
         )
 
-        status, ctype, data = myob_client.raw_request("POST", "/Sale/Invoice")
+        status, headers, data = myob_client.raw_request("POST", "/Sale/Invoice")
 
         assert status == 201
-        assert ctype == "application/json"
+        assert dict(headers)["Content-Type"] == "application/json"
         assert data == b'{"ok":true}'
+
+    def test_response_headers_relayed(self, mocker, tokens_file, myob_env):
+        # Not just Content-Type - raw_request() hands back every header MYOB
+        # sent, since it's the caller's job (proxy.py) to decide which of
+        # them matter to a client, not this function's.
+        write_tokens()
+        mocker.patch(
+            "mag.lib.myob_client.urlopen",
+            return_value=fake_response(b"{}", extra_headers=[("X-RateLimit-Remaining", "42")]),
+        )
+
+        _, headers, _ = myob_client.raw_request("GET", "/Sale/Invoice")
+
+        assert ("X-RateLimit-Remaining", "42") in headers
 
     def test_myob_http_error_is_returned_not_raised(self, mocker, tokens_file, myob_env):
         write_tokens()
         mocker.patch("mag.lib.myob_client.urlopen", side_effect=http_error(422, b'{"error":"bad"}'))
 
-        status, ctype, data = myob_client.raw_request("POST", "/Sale/Invoice")
+        status, _, data = myob_client.raw_request("POST", "/Sale/Invoice")
 
         assert status == 422
         assert data == b'{"error":"bad"}'
@@ -244,17 +258,17 @@ class TestRawRequest:
     def test_missing_tokens_file_returns_503_not_systemexit(self, tokens_file, myob_env):
         # tokens_file fixture only points MYOB_TOKENS_FILE at a scratch path -
         # doesn't create it, so this is the fresh-install-before-mag-oauth state.
-        status, ctype, data = myob_client.raw_request("GET", "/Sale/Invoice")
+        status, headers, data = myob_client.raw_request("GET", "/Sale/Invoice")
 
         assert status == 503
-        assert ctype == "application/json"
+        assert dict(headers)["Content-Type"] == "application/json"
         assert "mag oauth" in json.loads(data)["error"]
 
     def test_missing_env_vars_returns_503_not_systemexit(self, tokens_file, monkeypatch):
         monkeypatch.delenv("MYOB_CLIENT_ID", raising=False)
         monkeypatch.delenv("MYOB_CLIENT_SECRET", raising=False)
 
-        status, ctype, data = myob_client.raw_request("GET", "/Sale/Invoice")
+        status, _, data = myob_client.raw_request("GET", "/Sale/Invoice")
 
         assert status == 503
         assert "MYOB_CLIENT_ID" in json.loads(data)["error"]
@@ -262,7 +276,7 @@ class TestRawRequest:
     def test_missing_business_id_returns_503_not_systemexit(self, tokens_file, myob_env):
         write_tokens(businessId=None)
 
-        status, ctype, data = myob_client.raw_request("GET", "/Sale/Invoice")
+        status, _, data = myob_client.raw_request("GET", "/Sale/Invoice")
 
         assert status == 503
         assert "businessId" in json.loads(data)["error"]

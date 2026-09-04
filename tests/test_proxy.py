@@ -107,7 +107,7 @@ def authorised(running_server, mocker):
 
 class TestForwarding:
     def test_success_relays_status_body_and_content_type_verbatim(self, authorised, mocker):
-        mocker.patch.object(myob_client, "raw_request", return_value=(201, "application/json", b'{"UID":"abc"}'))
+        mocker.patch.object(myob_client, "raw_request", return_value=(201, [("Content-Type", "application/json")], b'{"UID":"abc"}'))
 
         status, headers, body = do_request(
             authorised, "POST", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"}, body=b'{"x":1}'
@@ -119,8 +119,49 @@ class TestForwarding:
         assert proxy.MAG_ERROR_HEADER not in headers  # MYOB's own response, relayed unmodified
         assert "laptop-explore POST /Sale/Invoice -> 201" in audit_log_lines()[-1]
 
+    def test_other_myob_headers_relayed(self, authorised, mocker):
+        # Not just Content-Type - any other header MYOB sends (rate limits,
+        # ETag, ...) should reach the client too, since it's not this
+        # proxy's job to guess which of MYOB's headers might matter.
+        mocker.patch.object(
+            myob_client,
+            "raw_request",
+            return_value=(200, [("Content-Type", "application/json"), ("X-RateLimit-Remaining", "42")], b"{}"),
+        )
+
+        _, headers, _ = do_request(authorised, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
+
+        assert headers["X-RateLimit-Remaining"] == "42"
+
+    def test_hop_by_hop_myob_headers_not_relayed(self, authorised, mocker):
+        # Connection/Transfer-Encoding describe MYOB's connection to mag, not
+        # mag's to the client - copying them through would misdescribe our
+        # own response. Content-Length is recomputed from the actual
+        # outgoing body, not copied from MYOB's (which may not even match,
+        # e.g. if MYOB chunked its response).
+        mocker.patch.object(
+            myob_client,
+            "raw_request",
+            return_value=(
+                200,
+                [
+                    ("Content-Type", "application/json"),
+                    ("Connection", "keep-alive"),
+                    ("Transfer-Encoding", "chunked"),
+                    ("Content-Length", "999"),
+                ],
+                b"{}",
+            ),
+        )
+
+        _, headers, body = do_request(authorised, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
+
+        assert "Connection" not in headers
+        assert "Transfer-Encoding" not in headers
+        assert headers["Content-Length"] == str(len(body))  # ours, not MYOB's stale "999"
+
     def test_body_and_content_type_forwarded_to_myob_client(self, authorised, mocker):
-        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, "application/json", b"{}"))
+        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, [("Content-Type", "application/json")], b"{}"))
 
         do_request(
             authorised,
@@ -136,7 +177,7 @@ class TestForwarding:
         assert kwargs["content_type"] == "application/json"
 
     def test_query_string_forwarded_as_params(self, authorised, mocker):
-        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, "application/json", b"[]"))
+        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, [("Content-Type", "application/json")], b"[]"))
 
         do_request(
             authorised,
@@ -149,7 +190,7 @@ class TestForwarding:
         assert kwargs["params"] == {"$top": "5", "$orderby": "Date desc"}
 
     def test_no_query_string_gives_none_params(self, authorised, mocker):
-        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, "application/json", b"[]"))
+        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, [("Content-Type", "application/json")], b"[]"))
 
         do_request(authorised, "GET", "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
 
@@ -169,7 +210,7 @@ class TestForwarding:
         # MYOB's own error bodies pass through unmodified - the proxy must
         # not reshape, swallow, or tag them as if mag generated them.
         mocker.patch.object(
-            myob_client, "raw_request", return_value=(422, "application/json", b'{"Errors":[{"Message":"bad"}]}')
+            myob_client, "raw_request", return_value=(422, [("Content-Type", "application/json")], b'{"Errors":[{"Message":"bad"}]}')
         )
 
         status, headers, body = do_request(
@@ -182,7 +223,7 @@ class TestForwarding:
 
     @pytest.mark.parametrize("method", ["GET", "POST", "PUT", "DELETE"])
     def test_all_four_methods_dispatch(self, authorised, mocker, method):
-        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, "application/json", b"{}"))
+        mock_raw_request = mocker.patch.object(myob_client, "raw_request", return_value=(200, [("Content-Type", "application/json")], b"{}"))
 
         status, _, _ = do_request(authorised, method, "/proxy/Sale/Invoice", headers={"Authorization": "Bearer t"})
 
